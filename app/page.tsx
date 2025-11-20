@@ -435,7 +435,7 @@ export default function Home() {
           <Button 
             onClick={() => setIsGuestMode(true)}
             variant="outline"
-            className="shadow-lg"
+            className="shadow-lg bg-white hover:bg-slate-50"
           >
             <Camera className="w-5 h-5" /> Probar como Invitado
           </Button>
