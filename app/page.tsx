@@ -75,6 +75,10 @@ interface UserData {
 // --- FUNCIÓN PARA ANALIZAR IMAGEN ---
 async function analyzeImageWithGemini(base64Image: string, mimeType: string = 'image/jpeg'): Promise<NutritionData | null> {
   try {
+    console.log('📤 Enviando imagen a Gemini API...');
+    console.log('📊 Tipo MIME:', mimeType);
+    console.log('📏 Tamaño base64:', base64Image.length, 'caracteres');
+    
     const response = await fetch('/api/analyze-food', {
       method: 'POST',
       headers: {
@@ -86,21 +90,27 @@ async function analyzeImageWithGemini(base64Image: string, mimeType: string = 'i
       })
     });
 
+    console.log('📥 Response status:', response.status, response.statusText);
+
     if (!response.ok) {
       const errorData = await response.json();
+      console.error('❌ Error response:', errorData);
       throw new Error(errorData.error || 'Error al analizar la imagen');
     }
 
     const result = await response.json();
+    console.log('✅ Resultado de Gemini:', result);
     
     if (result.error) {
+      console.warn('⚠️ Gemini reportó error:', result.error);
       return null;
     }
 
+    console.log('🎉 Análisis exitoso:', result.food_name);
     return result;
 
   } catch (error) {
-    console.error("Error analizando imagen:", error);
+    console.error("❌ Error analizando imagen:", error);
     return null;
   }
 }

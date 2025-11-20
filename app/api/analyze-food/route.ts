@@ -128,7 +128,7 @@ EJEMPLO:
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Gemini API Error:', errorData);
+      console.error('❌ Gemini API Error:', errorData);
       
       return NextResponse.json(
         { error: 'Error al analizar la imagen. Intenta de nuevo.' },
@@ -137,16 +137,20 @@ EJEMPLO:
     }
 
     const result = await response.json();
+    console.log('🔍 Gemini Response:', JSON.stringify(result, null, 2));
 
     // Extraer texto de la respuesta
     const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
     
     if (!text) {
+      console.error('❌ No text in response. Full result:', result);
       return NextResponse.json(
         { error: 'Respuesta vacía de Gemini' },
         { status: 500 }
       );
     }
+
+    console.log('📝 Raw text from Gemini:', text);
 
     // Limpiar y parsear JSON
     const cleanText = text
@@ -154,11 +158,15 @@ EJEMPLO:
       .replace(/```\n?/g, '')
       .trim();
 
+    console.log('🧹 Cleaned text:', cleanText);
+
     let nutritionData;
     try {
       nutritionData = JSON.parse(cleanText);
+      console.log('✅ Parsed nutrition data:', nutritionData);
     } catch (parseError) {
-      console.error('JSON Parse Error:', cleanText);
+      console.error('❌ JSON Parse Error:', parseError);
+      console.error('📄 Text that failed to parse:', cleanText);
       return NextResponse.json(
         { error: 'Respuesta inválida del modelo de IA' },
         { status: 500 }
