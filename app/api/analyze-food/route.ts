@@ -127,11 +127,40 @@ EJEMPLO:
     });
 
     if (!response.ok) {
-      const errorData = await response.json();
-      console.error('❌ Gemini API Error:', errorData);
+      let errorData;
+      try {
+        errorData = await response.json();
+      } catch (e) {
+        errorData = await response.text();
+      }
+      
+      console.error('❌ Gemini API Error Status:', response.status);
+      console.error('❌ Gemini API Error Data:', errorData);
+      
+      // Manejar errores específicos
+      if (response.status === 429) {
+        return NextResponse.json(
+          { error: '⏱️ Límite de cuota excedido. Gemini está rechazando las peticiones. Espera 1-2 minutos.' },
+          { status: 429 }
+        );
+      }
+      
+      if (response.status === 403) {
+        return NextResponse.json(
+          { error: '🔑 API key de Gemini inválida o no configurada en Vercel.' },
+          { status: 403 }
+        );
+      }
+
+      if (response.status === 400) {
+        return NextResponse.json(
+          { error: '⚠️ Petición inválida a Gemini. Verifica el formato de la imagen.' },
+          { status: 400 }
+        );
+      }
       
       return NextResponse.json(
-        { error: 'Error al analizar la imagen. Intenta de nuevo.' },
+        { error: `Error ${response.status}: ${JSON.stringify(errorData)}` },
         { status: response.status }
       );
     }

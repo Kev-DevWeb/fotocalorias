@@ -354,12 +354,18 @@ export default function Home() {
     setIsAnalyzing(true);
     setAnalysisResult(null);
     
-    const result = await analyzeImageWithGemini(base64, mimeType);
-    
-    if (result && !result.error) {
-      setAnalysisResult(result);
-    } else {
-      alert("No pudimos identificar comida. Intenta una foto más clara.");
+    try {
+      const result = await analyzeImageWithGemini(base64, mimeType);
+      
+      if (result && !result.error) {
+        setAnalysisResult(result);
+      } else {
+        alert("No pudimos identificar comida. Intenta una foto más clara.");
+        setPreviewImage(null);
+      }
+    } catch (error: any) {
+      console.error('❌ Error:', error);
+      alert(error.message || "Error al analizar la imagen. Intenta de nuevo.");
       setPreviewImage(null);
     }
     
@@ -430,12 +436,18 @@ export default function Home() {
     setIsGuestAnalyzing(true);
     setGuestAnalysisResult(null);
     
-    const result = await analyzeImageWithGemini(base64, mimeType);
-    
-    if (result && !result.error) {
-      setGuestAnalysisResult(result);
-    } else {
-      alert("No pudimos identificar comida. Intenta una foto más clara.");
+    try {
+      const result = await analyzeImageWithGemini(base64, mimeType);
+      
+      if (result && !result.error) {
+        setGuestAnalysisResult(result);
+      } else {
+        alert("No pudimos identificar comida. Intenta una foto más clara.");
+        setGuestPreviewImage(null);
+      }
+    } catch (error: any) {
+      console.error('❌ Error:', error);
+      alert(error.message || "Error al analizar la imagen. Intenta de nuevo.");
       setGuestPreviewImage(null);
     }
     
