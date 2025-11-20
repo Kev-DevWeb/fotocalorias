@@ -1,0 +1,49 @@
+mutation CreateMealLog(
+  $userId: UUID!
+  $description: String
+  $estimatedCalories: Int!
+  $loggedAt: Timestamp!
+  $mealType: String
+  $photoUrl: String!
+) @auth(level: USER) {
+  mealLog_insert(
+    data: {
+      userId: $userId
+      description: $description
+      estimatedCalories: $estimatedCalories
+      loggedAt: $loggedAt
+      mealType: $mealType
+      photoUrl: $photoUrl
+    }
+  ) {
+    id
+  }
+}
+
+query GetMealLog($id: UUID!) @auth(level: USER) {
+  mealLog(id: $id) {
+    id
+    userId
+    description
+    estimatedCalories
+    loggedAt
+    mealType
+    photoUrl
+  }
+}
+
+mutation UpdateDailyCalorieGoal($userId: UUID!, $dailyCalorieGoal: Int)
+@auth(level: USER, insecureReason: "This operation is safe to expose to all logged in users.") {
+  user_update(key: { id: $userId }, data: { dailyCalorieGoal: $dailyCalorieGoal }) {
+    id
+  }
+}
+
+query ListFamilyGroupsForUser($ownerUserId: UUID!) @auth(level: USER) {
+  familyGroups(where: { ownerUserId: { eq: $ownerUserId } }) {
+    id
+    groupName
+    description
+    createdAt
+  }
+}

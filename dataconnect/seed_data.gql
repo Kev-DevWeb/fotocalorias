@@ -1,0 +1,74 @@
+mutation CreateSeedData @transaction @auth(level: USER, insecureReason: "This operation is for internal data seeding and does not require specific user authentication.") {
+  user_insertMany(data: [
+    {
+      id: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2024-04-01T00:00:00Z",
+      dailyCalorieGoal: 2000,
+      displayName: "Demo User 1",
+      email: "demo1@example.com",
+      passwordHash: "hashed_password_1",
+      username: "demouser1",
+    },
+    {
+      id: "550e8400-e29b-41d4-a716-446655440001",
+      createdAt: "2024-04-01T00:00:00Z",
+      dailyCalorieGoal: 2200,
+      displayName: "Demo User 2",
+      email: "demo2@example.com",
+      passwordHash: "hashed_password_2",
+      username: "demouser2",
+    }
+  ])
+  familyGroup_insertMany(data: [
+    {
+      id: "650e8400-e29b-41d4-a716-446655440000",
+      ownerUserId: "550e8400-e29b-41d4-a716-446655440000",
+      createdAt: "2024-04-01T00:00:00Z",
+      groupName: "Demo Family Group 1"
+    },
+    {
+      id: "650e8400-e29b-41d4-a716-446655440001",
+      ownerUserId: "550e8400-e29b-41d4-a716-446655440001",
+      createdAt: "2024-04-01T00:00:00Z",
+      groupName: "Demo Family Group 2"
+    }
+  ])
+  mealLog_insertMany(data: [
+    {
+      id: "750e8400-e29b-41d4-a716-446655440000",
+      familyGroupId: "650e8400-e29b-41d4-a716-446655440000",
+      userId: "550e8400-e29b-41d4-a716-446655440000",
+      description: "Demo Meal Log 1",
+      estimatedCalories: 500,
+      loggedAt: "2024-04-01T08:00:00Z",
+      photoUrl: "http://example.com/photo1.jpg"
+    },
+    {
+      id: "750e8400-e29b-41d4-a716-446655440001",
+      familyGroupId: "650e8400-e29b-41d4-a716-446655440001",
+      userId: "550e8400-e29b-41d4-a716-446655440001",
+      description: "Demo Meal Log 2",
+      estimatedCalories: 600,
+      loggedAt: "2024-04-01T12:00:00Z",
+      photoUrl: "http://example.com/photo2.jpg"
+    }
+  ])
+  photoRecognitionData_insertMany(data: [
+    {
+      id: "850e8400-e29b-41d4-a716-446655440000",
+      mealLogId: "750e8400-e29b-41d4-a716-446655440000",
+      confidenceScore: 0.8,
+      manualOverride: false,
+      recognizedAt: "2024-04-01T08:00:00Z",
+      recognizedItems: ["apple", "banana"]
+    },
+    {
+      id: "850e8400-e29b-41d4-a716-446655440001",
+      mealLogId: "750e8400-e29b-41d4-a716-446655440001",
+      confidenceScore: 0.9,
+      manualOverride: false,
+      recognizedAt: "2024-04-01T12:00:00Z",
+      recognizedItems: ["pizza", "coke"]
+    }
+  ])
+}

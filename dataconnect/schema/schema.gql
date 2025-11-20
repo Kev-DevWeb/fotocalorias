@@ -1,0 +1,35 @@
+type User @table {
+  username: String!
+  email: String!
+  passwordHash: String!
+  createdAt: Timestamp!
+  displayName: String
+  profilePictureUrl: String
+  weightGoal: String
+  dailyCalorieGoal: Int
+}
+
+type FamilyGroup @table {
+  groupName: String!
+  ownerUser: User!
+  createdAt: Timestamp!
+  description: String
+}
+
+type MealLog @table {
+  user: User!
+  familyGroup: FamilyGroup
+  photoUrl: String!
+  loggedAt: Timestamp!
+  estimatedCalories: Int!
+  description: String
+  mealType: String
+}
+
+type PhotoRecognitionData @table {
+  mealLog: MealLog!
+  recognizedAt: Timestamp!
+  recognizedItems: [String]
+  confidenceScore: Float
+  manualOverride: Boolean
+}
