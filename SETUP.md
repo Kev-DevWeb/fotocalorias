@@ -35,6 +35,7 @@ fotocalorias/
 
 ### ✅ Sistema Multi-Usuario
 - **Autenticación real** con Firebase Auth (Email/Password)
+- **Modo Invitado**: Prueba la app sin registro (solo análisis)
 - Cada usuario tiene su **propio perfil y datos**
 - Login y registro funcional
 - Sesión persistente
@@ -117,14 +118,21 @@ Abre [http://localhost:3000](http://localhost:3000)
 
 ## 🎬 Flujo de Usuario
 
-### Primera Vez
+### Modo Invitado (sin registro)
+
+1. **Probar**: Click en "Probar como Invitado" en la pantalla de login
+2. **Escanear**: Toma foto de tu comida
+3. **Análisis**: Ve calorías y macros al instante con Gemini AI
+4. **Limitación**: Los datos NO se guardan (solo para probar)
+
+### Primera Vez (con registro)
 
 1. **Registro**: El usuario crea cuenta con email/password
 2. **Configuración**: Completa perfil biométrico (peso, estatura, edad, etc.)
 3. **Cálculo automático**: El sistema calcula objetivos personalizados
 4. **Dashboard**: Ve sus metas diarias de calorías y macros
 
-### Uso Diario
+### Uso Diario (registrado)
 
 1. **Escanear comida**: Toma foto con el botón flotante
 2. **Análisis IA**: Gemini identifica alimentos y calcula nutrientes

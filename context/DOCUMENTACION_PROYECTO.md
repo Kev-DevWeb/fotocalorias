@@ -57,9 +57,10 @@ fotocalorias/
 ## 🎯 Funcionalidades Principales
 
 ### 1. **Autenticación**
-- Login anónimo automático con Firebase Auth
+- Sistema de login con email/password
+- **Modo Invitado**: Prueba la app sin registro (solo análisis, no guarda datos)
 - Gestión de sesión persistente
-- Sin necesidad de registro de usuario
+- Botón "Probar como Invitado" en pantalla de login
 
 ### 2. **Gestión de Usuarios y Perfiles**
 - Sistema multi-usuario con autenticación individual
@@ -251,6 +252,7 @@ npm run lint         # Ejecuta ESLint
 
 ### ✅ Implementado
 - ✅ Sistema multi-usuario con autenticación Email/Password
+- ✅ **Modo Invitado** para probar sin registro
 - ✅ Formulario de login y registro (AuthForm)
 - ✅ Configuración de perfil biométrico completo (ProfileSetup)
 - ✅ Calculadora de calorías con fórmulas científicas (Mifflin-St Jeor)
@@ -260,6 +262,7 @@ npm run lint         # Ejecuta ESLint
 - ✅ Almacenamiento segregado por usuario en Firestore
 - ✅ Filtrado por fecha y usuario
 - ✅ Actualización en tiempo real
+- ✅ Footer global con créditos a DevVisual Studio
 - ✅ Proyecto configurado para Vercel
 
 ### ⚠️ Pendiente de Configuración

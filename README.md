@@ -10,6 +10,7 @@
 ## ✨ Características
 
 - 📸 **Escaneo de comida con IA**: Toma foto y obtén análisis nutricional automático con Gemini AI
+- 👋 **Modo Invitado**: Prueba la app sin registro (solo análisis, no guarda datos)
 - 👤 **Multi-usuario**: Sistema de autenticación con email/password
 - 🧮 **Calculadora personalizada**: Objetivos calóricos basados en biometría (peso, estatura, edad, sexo)
 - 🎯 **Metas fitness**: Ganar músculo (+350 kcal), perder grasa (-400 kcal), o mantener peso

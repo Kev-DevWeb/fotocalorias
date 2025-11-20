@@ -157,6 +157,13 @@ export default function Home() {
   const [analysisResult, setAnalysisResult] = useState<NutritionData | null>(null);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Estados para modo invitado
+  const [isGuestMode, setIsGuestMode] = useState(false);
+  const [guestAnalysisResult, setGuestAnalysisResult] = useState<NutritionData | null>(null);
+  const [guestPreviewImage, setGuestPreviewImage] = useState<string | null>(null);
+  const [isGuestAnalyzing, setIsGuestAnalyzing] = useState(false);
+  const guestFileInputRef = useRef<HTMLInputElement>(null);
 
   // Autenticación
   useEffect(() => {
@@ -334,9 +341,193 @@ export default function Home() {
     ? calculateDailyProgress(totals, userData.targets)
     : null;
 
-  // Si no hay usuario, mostrar login
-  if (!user) {
-    return <AuthForm onLogin={handleLogin} onRegister={handleRegister} />;
+  // Handler para modo invitado
+  const handleGuestFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
+        alert('Por favor selecciona una imagen JPG, PNG o WebP');
+        return;
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        alert('La imagen es demasiado grande. Máximo 10MB');
+        return;
+      }
+
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const base64String = reader.result as string;
+        setGuestPreviewImage(base64String);
+        
+        const base64Data = base64String.split(',')[1];
+        analyzeGuestImage(base64Data, file.type);
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const analyzeGuestImage = async (base64: string, mimeType: string) => {
+    setIsGuestAnalyzing(true);
+    setGuestAnalysisResult(null);
+    
+    const result = await analyzeImageWithGemini(base64, mimeType);
+    
+    if (result && !result.error) {
+      setGuestAnalysisResult(result);
+    } else {
+      alert("No pudimos identificar comida. Intenta una foto más clara.");
+      setGuestPreviewImage(null);
+    }
+    
+    setIsGuestAnalyzing(false);
+  };
+
+  // Si no hay usuario, mostrar login o modo invitado
+  if (!user && !isGuestMode) {
+    return (
+      <div className="relative">
+        <AuthForm onLogin={handleLogin} onRegister={handleRegister} />
+        <div className="fixed bottom-20 left-0 right-0 flex justify-center px-4">
+          <Button 
+            onClick={() => setIsGuestMode(true)}
+            variant="outline"
+            className="shadow-lg"
+          >
+            <Camera className="w-5 h-5" /> Probar como Invitado
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
+  // Modo invitado
+  if (isGuestMode && !user) {
+    return (
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-24">
+        {/* Header Invitado */}
+        <header className="bg-white sticky top-0 z-10 border-b border-slate-200 px-4 py-4 shadow-sm">
+          <div className="max-w-md mx-auto flex justify-between items-center">
+            <div className="flex items-center gap-3">
+              <div className="bg-orange-500 p-2 rounded-lg">
+                <Pizza className="w-5 h-5 text-white" />
+              </div>
+              <div>
+                <h1 className="font-bold text-lg">FotoCalorías</h1>
+                <p className="text-xs text-slate-500">Modo Invitado (solo análisis)</p>
+              </div>
+            </div>
+            <Button
+              onClick={() => setIsGuestMode(false)}
+              variant="outline"
+              className="text-xs px-3 py-1.5"
+            >
+              Iniciar Sesión
+            </Button>
+          </div>
+        </header>
+
+        <main className="max-w-md mx-auto p-4 space-y-6">
+          {/* Info del Modo Invitado */}
+          <Card className="bg-orange-50 border-orange-200">
+            <div className="flex gap-3">
+              <div className="text-3xl">👋</div>
+              <div>
+                <h3 className="font-bold text-slate-800 mb-1">Modo Invitado</h3>
+                <p className="text-sm text-slate-600">
+                  Escanea tu comida y obtén el análisis nutricional con IA. 
+                  <strong> Los datos no se guardarán.</strong> Crea una cuenta para guardar tu progreso.
+                </p>
+              </div>
+            </div>
+          </Card>
+
+          {/* Modal de Análisis Invitado */}
+          {guestPreviewImage && (
+            <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
+              <div className="bg-white rounded-2xl w-full max-w-sm overflow-hidden shadow-2xl">
+                <div className="relative h-64 bg-slate-100">
+                  <img src={guestPreviewImage} alt="Preview" className="w-full h-full object-cover" />
+                  <button 
+                    onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                    className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+                <div className="p-6">
+                  {isGuestAnalyzing ? (
+                    <div className="text-center py-8 space-y-4">
+                      <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto" />
+                      <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
+                    </div>
+                  ) : guestAnalysisResult ? (
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900">{guestAnalysisResult.food_name}</h3>
+                        <p className="text-orange-500 font-bold text-lg">{guestAnalysisResult.calories} kcal</p>
+                        {guestAnalysisResult.confidence && (
+                          <p className="text-xs text-slate-500">Confianza: {guestAnalysisResult.confidence}</p>
+                        )}
+                      </div>
+                      <div className="grid grid-cols-3 gap-2">
+                        <div className="bg-blue-50 rounded-lg p-2 text-center">
+                          <div className="text-xs text-blue-600 font-semibold">Proteína</div>
+                          <div className="text-lg font-bold text-blue-700">{guestAnalysisResult.protein}g</div>
+                        </div>
+                        <div className="bg-green-50 rounded-lg p-2 text-center">
+                          <div className="text-xs text-green-600 font-semibold">Carbos</div>
+                          <div className="text-lg font-bold text-green-700">{guestAnalysisResult.carbs}g</div>
+                        </div>
+                        <div className="bg-yellow-50 rounded-lg p-2 text-center">
+                          <div className="text-xs text-yellow-600 font-semibold">Grasas</div>
+                          <div className="text-lg font-bold text-yellow-700">{guestAnalysisResult.fat}g</div>
+                        </div>
+                      </div>
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-700">
+                        💡 <strong>Regístrate</strong> para guardar tus comidas y ver tu progreso diario
+                      </div>
+                      <Button 
+                        onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                        variant="primary" 
+                        className="w-full"
+                      >
+                        <Check className="w-5 h-5" /> Entendido
+                      </Button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            </div>
+          )}
+
+          {/* Instrucciones */}
+          <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-white">
+            <div className="text-6xl mb-4">📸</div>
+            <p className="text-slate-600 mb-2 font-medium">Escanea tu comida</p>
+            <p className="text-sm text-slate-400">Toca el botón de abajo para analizar con IA</p>
+          </div>
+        </main>
+
+        {/* Botón Flotante de Escaneo */}
+        <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-40">
+          <Button 
+            onClick={() => guestFileInputRef.current?.click()} 
+            variant="primary"
+            className="rounded-full px-8 py-4 shadow-xl shadow-orange-200 text-lg font-bold"
+          >
+            <Camera className="w-6 h-6" /> Escanear Comida
+          </Button>
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" 
+            className="hidden" 
+            ref={guestFileInputRef} 
+            onChange={handleGuestFileSelect} 
+          />
+        </div>
+      </div>
+    );
   }
 
   // Si está configurando perfil

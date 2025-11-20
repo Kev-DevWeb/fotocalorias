@@ -23,11 +23,26 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="en">
+    <html lang="es">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
         {children}
+        
+        {/* Footer Global */}
+        <footer className="bg-white border-t border-slate-200 py-4 px-4 text-center">
+          <p className="text-sm text-slate-600">
+            Desarrollada por{' '}
+            <a 
+              href="https://www.devvisualstudio.com/" 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-orange-500 font-semibold hover:text-orange-600 transition-colors hover:underline"
+            >
+              DevVisual Studio
+            </a>
+          </p>
+        </footer>
       </body>
     </html>
   );
