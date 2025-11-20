@@ -38,12 +38,20 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
     
     // Guardar
     setIsSaving(true);
+    console.log('🔵 Iniciando guardado de perfil...');
+    console.log('📊 Datos del perfil:', profile);
+    console.log('🎯 Objetivos calculados:', targets);
+    
     try {
+      console.log('💾 Llamando a onSave...');
       await onSave(profile as UserProfile, targets);
+      console.log('✅ Perfil guardado exitosamente');
     } catch (err) {
+      console.error('❌ Error al guardar:', err);
       setError('Error al guardar el perfil. Intenta de nuevo.');
     } finally {
       setIsSaving(false);
+      console.log('🏁 Proceso de guardado finalizado');
     }
   };
 
@@ -54,22 +62,22 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
           <User className="w-6 h-6 text-white" />
         </div>
         <div>
-          <h2 className="text-2xl font-bold text-gray-900">Configura tu Perfil</h2>
-          <p className="text-sm text-gray-500">Calcularemos tus objetivos personalizados</p>
+          <h2 className="text-2xl font-bold text-slate-900">Configura tu Perfil</h2>
+          <p className="text-sm text-slate-600">Calcularemos tus objetivos personalizados</p>
         </div>
       </div>
       
       <form onSubmit={handleSubmit} className="space-y-5">
         {/* Datos Biométricos */}
         <div className="space-y-4">
-          <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <span className="text-orange-500">📊</span> Datos Biométricos
           </h3>
           
           <div className="grid grid-cols-2 gap-4">
             {/* Peso */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-800 mb-1">
                 Peso (kg) *
               </label>
               <input
@@ -87,7 +95,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
             
             {/* Estatura */}
             <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
+              <label className="block text-sm font-medium text-slate-800 mb-1">
                 Estatura (cm) *
               </label>
               <input
@@ -105,14 +113,14 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
           
           {/* Edad */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
+            <label className="block text-sm font-medium text-slate-800 mb-1">
               Edad (años) *
             </label>
             <input
               type="number"
               value={profile.age || ''}
               onChange={(e) => setProfile({ ...profile, age: Number(e.target.value) })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
               placeholder="30"
               min="15"
               max="100"
@@ -122,7 +130,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
           
           {/* Sexo */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-800 mb-2">
               Sexo *
             </label>
             <div className="flex gap-3">
@@ -152,13 +160,13 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
 
         {/* Estilo de Vida */}
         <div className="space-y-4 pt-4 border-t">
-          <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <span className="text-orange-500">🏃</span> Estilo de Vida
           </h3>
           
           {/* Nivel de Actividad */}
           <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
+            <label className="block text-sm font-medium text-slate-800 mb-2">
               Nivel de Actividad Física *
             </label>
             <select
@@ -178,7 +186,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
 
         {/* Objetivo */}
         <div className="space-y-4 pt-4 border-t">
-          <h3 className="font-semibold text-gray-700 flex items-center gap-2">
+          <h3 className="font-semibold text-slate-800 flex items-center gap-2">
             <span className="text-orange-500">🎯</span> Tu Objetivo
           </h3>
           
@@ -194,7 +202,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
               <TrendingDown className="w-5 h-5 text-red-500" />
               <div className="flex-1">
                 <div className="font-semibold">Perder Grasa</div>
-                <div className="text-xs text-gray-500">Déficit calórico moderado</div>
+                <div className="text-xs text-slate-600">Déficit calórico moderado</div>
               </div>
             </label>
 
@@ -209,7 +217,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
               <Minus className="w-5 h-5 text-blue-500" />
               <div className="flex-1">
                 <div className="font-semibold">Mantener Peso</div>
-                <div className="text-xs text-gray-500">Calorías de mantenimiento</div>
+                <div className="text-xs text-slate-600">Calorías de mantenimiento</div>
               </div>
             </label>
 
@@ -224,7 +232,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
               <TrendingUp className="w-5 h-5 text-green-500" />
               <div className="flex-1">
                 <div className="font-semibold">Ganar Músculo</div>
-                <div className="text-xs text-gray-500">Superávit calórico moderado</div>
+                <div className="text-xs text-slate-600">Superávit calórico moderado</div>
               </div>
             </label>
           </div>

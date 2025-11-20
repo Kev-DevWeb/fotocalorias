@@ -251,16 +251,41 @@ export default function Home() {
   };
 
   const handleSaveProfile = async (profile: UserProfile, targets: MacroTargets) => {
-    if (!user) return;
+    console.log('🔵 handleSaveProfile llamado');
+    console.log('👤 Usuario actual:', user?.uid);
     
-    const userDocRef = doc(db, 'users', user.uid);
-    await setDoc(userDocRef, {
-      profile,
-      targets,
-      updatedAt: serverTimestamp()
-    }, { merge: true });
+    if (!user) {
+      console.error('❌ No hay usuario autenticado');
+      return;
+    }
     
-    setShowProfileSetup(false);
+    try {
+      console.log('📝 Preparando documento para Firestore...');
+      const userDocRef = doc(db, 'users', user.uid);
+      console.log('📍 Referencia del documento:', userDocRef.path);
+      
+      const dataToSave = {
+        profile,
+        targets,
+        updatedAt: serverTimestamp()
+      };
+      console.log('💾 Datos a guardar:', dataToSave);
+      
+      console.log('⏳ Guardando en Firestore...');
+      await setDoc(userDocRef, dataToSave, { merge: true });
+      console.log('✅ Datos guardados exitosamente en Firestore');
+      
+      setShowProfileSetup(false);
+      console.log('🎉 Perfil configurado correctamente');
+    } catch (error) {
+      console.error('❌ Error al guardar en Firestore:', error);
+      console.error('📋 Detalles del error:', {
+        name: (error as Error).name,
+        message: (error as Error).message,
+        stack: (error as Error).stack
+      });
+      throw error; // Re-lanzar para que ProfileSetup lo capture
+    }
   };
 
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
