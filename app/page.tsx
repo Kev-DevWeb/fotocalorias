@@ -164,13 +164,22 @@ export default function Home() {
   const [guestPreviewImage, setGuestPreviewImage] = useState<string | null>(null);
   const [isGuestAnalyzing, setIsGuestAnalyzing] = useState(false);
   const guestFileInputRef = useRef<HTMLInputElement>(null);
+  
+  // Estado de carga inicial
+  const [isInitializing, setIsInitializing] = useState(true);
 
   // Autenticación
   useEffect(() => {
+    console.log('🔵 Inicializando autenticación...');
     const unsubscribe = onAuthStateChanged(auth, (u) => {
+      console.log('👤 Estado de autenticación:', u ? `Usuario: ${u.email}` : 'Sin usuario');
       setUser(u);
+      setIsInitializing(false);
     });
-    return () => unsubscribe();
+    return () => {
+      console.log('🔴 Limpiando listener de autenticación');
+      unsubscribe();
+    };
   }, []);
 
   // Cargar datos del usuario
@@ -180,8 +189,10 @@ export default function Home() {
       return;
     }
 
+    console.log('📊 Configurando listener para datos de usuario:', user.uid);
     const userDocRef = doc(db, 'users', user.uid);
     const unsubscribe = onSnapshot(userDocRef, (snapshot) => {
+      console.log('📝 Datos de usuario recibidos:', snapshot.exists() ? 'Documento existe' : 'Documento no existe');
       if (snapshot.exists()) {
         setUserData(snapshot.data() as UserData);
         // Si no tiene perfil configurado, mostrar setup
@@ -190,13 +201,18 @@ export default function Home() {
         }
       } else {
         // Crear documento de usuario si no existe
+        console.log('✨ Creando documento de usuario nuevo');
         const newUserData: UserData = {
           email: user.email || '',
           displayName: user.displayName || 'Usuario',
           createdAt: serverTimestamp(),
           updatedAt: serverTimestamp(),
         };
-        setDoc(userDocRef, newUserData);
+        setDoc(userDocRef, newUserData).then(() => {
+          console.log('✅ Documento de usuario creado');
+        }).catch((error) => {
+          console.error('❌ Error al crear documento de usuario:', error);
+        });
       }
     });
 
@@ -210,6 +226,7 @@ export default function Home() {
       return;
     }
 
+    console.log('🍔 Configurando listener para logs de calorías');
     const logsRef = collection(db, 'users', user.uid, 'calorie_logs');
     
     const q = query(
@@ -218,6 +235,7 @@ export default function Home() {
     );
     
     const unsubscribe = onSnapshot(q, (snapshot) => {
+      console.log(`📄 Logs recibidos: ${snapshot.docs.length} documentos`);
       const logsData = snapshot.docs.map(doc => ({ 
         id: doc.id, 
         ...doc.data() 
@@ -230,6 +248,7 @@ export default function Home() {
         return logDate.toDateString() === new Date().toDateString();
       });
 
+      console.log(`✅ Logs de hoy: ${todayLogs.length}`);
       setLogs(todayLogs);
     });
 
@@ -428,7 +447,7 @@ export default function Home() {
   // Modo invitado
   if (isGuestMode && !user) {
     return (
-      <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-24">
+      <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
         {/* Header Invitado */}
         <header className="bg-white sticky top-0 z-10 border-b border-slate-200 px-4 py-4 shadow-sm">
           <div className="max-w-md mx-auto flex justify-between items-center">
@@ -567,17 +586,32 @@ export default function Home() {
     );
   }
 
-  // Loading
-  if (!userData) {
+  // Loading inicial
+  if (isInitializing) {
     return (
-      <div className="flex h-screen items-center justify-center">
-        <Loader2 className="animate-spin text-orange-500 w-10 h-10" />
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <Loader2 className="animate-spin text-orange-500 w-12 h-12 mx-auto mb-4" />
+          <p className="text-slate-600 font-medium">Cargando FotoCalorías...</p>
+        </div>
+      </div>
+    );
+  }
+  
+  // Loading datos de usuario
+  if (user && !userData) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-slate-50">
+        <div className="text-center">
+          <Loader2 className="animate-spin text-orange-500 w-12 h-12 mx-auto mb-4" />
+          <p className="text-slate-600 font-medium">Cargando tu perfil...</p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 font-sans text-slate-900 pb-24">
+    <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
       {/* Header */}
       <header className="bg-white sticky top-0 z-10 border-b border-slate-200 px-4 py-4 shadow-sm">
         <div className="max-w-md mx-auto flex justify-between items-center">
@@ -587,7 +621,7 @@ export default function Home() {
             </div>
             <div>
               <h1 className="font-bold text-lg">FotoCalorías</h1>
-              <p className="text-xs text-slate-500">Hola, {userData.displayName}</p>
+              <p className="text-xs text-slate-500">Hola, {userData?.displayName || 'Usuario'}</p>
             </div>
           </div>
           <div className="flex gap-2">

@@ -84,7 +84,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
                 type="number"
                 value={profile.weight || ''}
                 onChange={(e) => setProfile({ ...profile, weight: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-slate-900 placeholder:text-slate-400"
                 placeholder="75"
                 min="30"
                 max="300"
@@ -102,7 +102,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
                 type="number"
                 value={profile.height || ''}
                 onChange={(e) => setProfile({ ...profile, height: Number(e.target.value) })}
-                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-slate-900 placeholder:text-slate-400"
                 placeholder="175"
                 min="100"
                 max="250"
@@ -172,7 +172,7 @@ export default function ProfileSetup({ onSave, initialProfile }: ProfileSetupPro
             <select
               value={profile.activityLevel}
               onChange={(e) => setProfile({ ...profile, activityLevel: e.target.value as any })}
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+              className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-slate-900"
               required
             >
               <option value="sedentary">🪑 Sedentario (poco ejercicio)</option>

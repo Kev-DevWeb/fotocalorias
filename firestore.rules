@@ -1,0 +1,40 @@
+rules_version = '2';
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Colección de usuarios - Cada usuario solo puede leer/escribir su propio documento
+    match /users/{userId} {
+      // Permitir lectura si está autenticado y es el dueño
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Permitir crear su propio documento al registrarse
+      allow create: if request.auth != null && request.auth.uid == userId;
+      
+      // Permitir actualizar solo su propio documento
+      allow update: if request.auth != null && request.auth.uid == userId;
+      
+      // No permitir eliminar usuarios
+      allow delete: if false;
+    }
+    
+    // Subcolección de logs de calorías - Solo el propietario puede acceder
+    match /users/{userId}/calorie_logs/{logId} {
+      // Solo el dueño puede leer sus logs
+      allow read: if request.auth != null && request.auth.uid == userId;
+      
+      // Solo el dueño puede crear logs
+      allow create: if request.auth != null 
+                    && request.auth.uid == userId
+                    && request.resource.data.keys().hasAll(['food_name', 'calories', 'protein', 'carbs', 'fat', 'createdAt'])
+                    && request.resource.data.food_name is string
+                    && request.resource.data.calories is number
+                    && request.resource.data.protein is number
+                    && request.resource.data.carbs is number
+                    && request.resource.data.fat is number;
+      
+      // Solo el dueño puede actualizar o eliminar sus logs
+      allow update, delete: if request.auth != null && request.auth.uid == userId;
+    }
+  }
+}
