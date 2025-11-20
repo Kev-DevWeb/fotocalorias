@@ -1,237 +1,128 @@
 import { NextRequest, NextResponse } from 'next/server';
 
-// Configuración del modelo
+// Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = 'gemini-2.0-flash-exp';
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/${GEMINI_MODEL}:generateContent`;
+// EL NUEVO ESTÁNDAR (Más rápido y gratuito en el nivel base)
+const MODEL_FLASH = 'gemini-2.5-flash'; 
+
+// EL NUEVO MODELO "PRO" (Inteligente)
+const MODEL_PRO = 'gemini-2.5-pro';
+
+// O si quieres probar lo más nuevo que salió esta semana:
+// const MODEL_PRO = 'gemini-3.0-pro';// Modelo de respaldo rápido
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
-const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
+
+// Función auxiliar para llamar a Gemini (reutilizable para el fallback)
+async function callGeminiAPI(model: string, imageBase64: string, mimeType: string, promptText: string) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [
+          { text: promptText },
+          { inlineData: { mimeType: mimeType, data: imageBase64 } }
+        ]
+      }],
+      generationConfig: {
+        temperature: 0.4,
+        topK: 32,
+        topP: 1,
+        maxOutputTokens: 2048, // Aumentado para permitir respuestas completas
+        responseMimeType: "application/json" // <--- ¡MAGIA! Fuerza JSON puro
+      }
+    })
+  });
+
+  return response;
+}
 
 export async function POST(request: NextRequest) {
   try {
-    // Validar API Key
+    // 1. Validaciones Iniciales
     if (!GEMINI_API_KEY) {
-      return NextResponse.json(
-        { error: 'Configuración de servidor incompleta. Configura GEMINI_API_KEY.' },
-        { status: 500 }
-      );
+      return NextResponse.json({ error: 'Server config error: Missing API KEY' }, { status: 500 });
     }
 
-    // Obtener imagen del body
     const { image, mimeType } = await request.json();
 
-    // Validaciones
-    if (!image || !mimeType) {
-      return NextResponse.json(
-        { error: 'Faltan parámetros: image y mimeType requeridos' },
-        { status: 400 }
-      );
-    }
-
-    // Validar tipo MIME
-    if (!ALLOWED_MIME_TYPES.includes(mimeType)) {
-      return NextResponse.json(
-        { error: `Tipo de imagen no soportado. Usar: ${ALLOWED_MIME_TYPES.join(', ')}` },
-        { status: 400 }
-      );
-    }
-
-    // Validar tamaño (base64 aproximado)
-    const imageSize = Buffer.from(image, 'base64').length;
-    if (imageSize > MAX_IMAGE_SIZE) {
-      return NextResponse.json(
-        { error: 'Imagen demasiado grande. Máximo 10MB' },
-        { status: 400 }
-      );
-    }
-
-    // Prompt mejorado para Gemini
-    const prompt = `
-Eres un nutricionista experto certificado. Analiza esta imagen de comida con precisión.
-
-TAREAS:
-1. Identifica TODOS los alimentos visibles
-2. Estima las porciones de cada uno
-3. Calcula el contenido nutricional TOTAL del plato
-
-REGLAS:
-- Si no hay comida clara, devuelve: {"error": "No se detectó comida en la imagen"}
-- Sé conservador en las estimaciones (mejor subestimar que sobrestimar)
-- Si hay múltiples platos, suma todos los valores
-- Considera condimentos, aceites y salsas visibles
-
-RESPUESTA:
-Devuelve ÚNICAMENTE un objeto JSON válido (sin markdown, sin bloques de código):
-
-{
-  "food_name": "Descripción breve del plato completo",
-  "calories": número entero (kcal totales),
-  "protein": número entero (gramos totales),
-  "carbs": número entero (gramos totales),
-  "fat": número entero (gramos totales),
-  "confidence": "Alta" | "Media" | "Baja",
-  "detected_items": ["item1", "item2"],
-  "portion_note": "Descripción breve del tamaño de porción estimado"
-}
-
-EJEMPLO:
-{
-  "food_name": "Pechuga de pollo a la plancha con arroz y ensalada",
-  "calories": 450,
-  "protein": 45,
-  "carbs": 48,
-  "fat": 8,
-  "confidence": "Alta",
-  "detected_items": ["pechuga de pollo", "arroz blanco", "lechuga", "tomate"],
-  "portion_note": "Porción mediana (~250g plato completo)"
-}
-`;
-
-    // Llamar a Gemini API
-    const response = await fetch(`${GEMINI_API_URL}?key=${GEMINI_API_KEY}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        contents: [{
-          parts: [
-            { text: prompt },
-            {
-              inlineData: {
-                mimeType: mimeType,
-                data: image
-              }
-            }
-          ]
-        }],
-        generationConfig: {
-          temperature: 0.4,  // Más determinístico para análisis nutricional
-          topK: 32,
-          topP: 1,
-          maxOutputTokens: 1024,
-        },
-        safetySettings: [
-          {
-            category: "HARM_CATEGORY_HARASSMENT",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          },
-          {
-            category: "HARM_CATEGORY_HATE_SPEECH",
-            threshold: "BLOCK_MEDIUM_AND_ABOVE"
-          }
-        ]
-      })
-    });
-
-    if (!response.ok) {
-      let errorData;
-      try {
-        errorData = await response.json();
-      } catch (e) {
-        errorData = await response.text();
-      }
-      
-      console.error('❌ Gemini API Error Status:', response.status);
-      console.error('❌ Gemini API Error Data:', errorData);
-      
-      // Manejar errores específicos
-      if (response.status === 429) {
-        return NextResponse.json(
-          { error: '⏱️ Límite de cuota excedido. Gemini está rechazando las peticiones. Espera 1-2 minutos.' },
-          { status: 429 }
-        );
-      }
-      
-      if (response.status === 403) {
-        return NextResponse.json(
-          { error: '🔑 API key de Gemini inválida o no configurada en Vercel.' },
-          { status: 403 }
-        );
-      }
-
-      if (response.status === 400) {
-        return NextResponse.json(
-          { error: '⚠️ Petición inválida a Gemini. Verifica el formato de la imagen.' },
-          { status: 400 }
-        );
-      }
-      
-      return NextResponse.json(
-        { error: `Error ${response.status}: ${JSON.stringify(errorData)}` },
-        { status: response.status }
-      );
-    }
-
-    const result = await response.json();
-    console.log('🔍 Gemini Response:', JSON.stringify(result, null, 2));
-
-    // Extraer texto de la respuesta
-    const text = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    if (!image || !mimeType) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
+    if (!ALLOWED_MIME_TYPES.includes(mimeType)) return NextResponse.json({ error: 'Formato no soportado' }, { status: 400 });
     
-    if (!text) {
-      console.error('❌ No text in response. Full result:', result);
-      return NextResponse.json(
-        { error: 'Respuesta vacía de Gemini' },
-        { status: 500 }
-      );
+    // Validación de tamaño básica (opcionalmente podrías quitar el Buffer si usas runtime edge estricto, pero suele funcionar)
+    const imageSize = Math.ceil((image.length * 3) / 4); // Estimación rápida de tamaño base64
+    if (imageSize > MAX_IMAGE_SIZE) return NextResponse.json({ error: 'Imagen muy grande' }, { status: 400 });
+
+    // 2. Definir el Prompt
+    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON:
+{
+  "food_name": "nombre descriptivo",
+  "calories": número_entero,
+  "protein": gramos,
+  "carbs": gramos,
+  "fat": gramos,
+  "confidence": "Alta|Media|Baja",
+  "detected_items": ["item1","item2"],
+  "portion_note": "descripción breve"
+}
+Si no hay comida: {"error": "No se detectó comida"}`;
+
+    // 3. INTENTO 1: Usar Gemini Pro (Mejor razonamiento)
+    console.log('🤖 Intentando con Gemini Pro...');
+    let response = await callGeminiAPI(MODEL_PRO, image, mimeType, prompt);
+    let usedModel = MODEL_PRO;
+
+    // 4. Lógica de Fallback (Si Pro falla por cuota 429, usar Flash)
+    if (response.status === 429) {
+      console.warn('⚠️ Cuota de Pro excedida (429). Cambiando a Flash ⚡...');
+      response = await callGeminiAPI(MODEL_FLASH, image, mimeType, prompt);
+      usedModel = MODEL_FLASH;
     }
 
-    console.log('📝 Raw text from Gemini:', text);
+    // Manejo de otros errores
+    if (!response.ok) {
+      const errorText = await response.text();
+      console.error(`❌ Error en ${usedModel}:`, errorText);
+      return NextResponse.json({ error: `API Error (${usedModel}): ${response.status}` }, { status: response.status });
+    }
 
-    // Limpiar y parsear JSON
-    const cleanText = text
-      .replace(/```json\n?/g, '')
-      .replace(/```\n?/g, '')
-      .trim();
+    // 5. Procesar Respuesta
+    const result = await response.json();
+    console.log('🔍 Respuesta completa de Gemini:', JSON.stringify(result, null, 2));
+    
+    const rawText = result.candidates?.[0]?.content?.parts?.[0]?.text;
+    console.log('📝 Raw text extraído:', rawText);
 
-    console.log('🧹 Cleaned text:', cleanText);
+    if (!rawText) {
+      console.error('❌ No se encontró texto en la respuesta. Estructura:', result);
+      return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
+    }
 
+    // Como usamos responseMimeType: "application/json", el texto YA es JSON válido.
+    // No hace falta limpiar markdown.
     let nutritionData;
     try {
-      nutritionData = JSON.parse(cleanText);
-      console.log('✅ Parsed nutrition data:', nutritionData);
-    } catch (parseError) {
-      console.error('❌ JSON Parse Error:', parseError);
-      console.error('📄 Text that failed to parse:', cleanText);
-      return NextResponse.json(
-        { error: 'Respuesta inválida del modelo de IA' },
-        { status: 500 }
-      );
+      nutritionData = JSON.parse(rawText);
+    } catch (e) {
+      console.error('Error parseando JSON:', rawText);
+      return NextResponse.json({ error: 'La IA no devolvió un JSON válido' }, { status: 500 });
     }
 
-    // Validar estructura de respuesta
-    if (nutritionData.error) {
-      return NextResponse.json(nutritionData, { status: 200 });
-    }
+    // Añadir metadatos de qué modelo se usó (útil para depurar)
+    nutritionData.model_used = usedModel;
 
-    const requiredFields = ['food_name', 'calories', 'protein', 'carbs', 'fat'];
-    const hasAllFields = requiredFields.every(field => 
-      nutritionData.hasOwnProperty(field) && 
-      (typeof nutritionData[field] === 'string' || typeof nutritionData[field] === 'number')
-    );
-
-    if (!hasAllFields) {
-      return NextResponse.json(
-        { error: 'Datos incompletos del análisis' },
-        { status: 500 }
-      );
-    }
-
-    // Devolver resultado exitoso
     return NextResponse.json(nutritionData, { status: 200 });
 
   } catch (error) {
     console.error('Server Error:', error);
-    return NextResponse.json(
-      { error: 'Error interno del servidor' },
-      { status: 500 }
-    );
+    return NextResponse.json({ error: 'Error interno del servidor' }, { status: 500 });
   }
 }
 
-// Configuración de ruta
-export const runtime = 'edge'; // Usar Edge Runtime para mejor performance
-export const maxDuration = 30; // Timeout de 30 segundos
+export const runtime = 'edge';
+export const maxDuration = 30;

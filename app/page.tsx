@@ -73,11 +73,23 @@ interface UserData {
 }
 
 // --- FUNCIÓN PARA ANALIZAR IMAGEN ---
-async function analyzeImageWithGemini(base64Image: string, mimeType: string = 'image/jpeg'): Promise<NutritionData | null> {
+async function analyzeImageWithGemini(
+  base64Image: string, 
+  mimeType: string = 'image/jpeg',
+  rateLimitCheck: () => boolean
+): Promise<NutritionData | null> {
   try {
-    console.log('📤 Enviando imagen a Gemini API...');
+    // Verificar rate limit antes de hacer la petición
+    if (!rateLimitCheck()) {
+      throw new Error('⏱️ Demasiadas peticiones. Espera un momento antes de analizar otra imagen (límite: 15 por minuto)');
+    }
+
+    console.log('🚀 =================================');
+    console.log('📤 NUEVA PETICIÓN A GEMINI API');
+    console.log('🕐 Timestamp:', new Date().toISOString());
     console.log('📊 Tipo MIME:', mimeType);
     console.log('📏 Tamaño base64:', base64Image.length, 'caracteres');
+    console.log('🚀 =================================');
     
     const response = await fetch('/api/analyze-food', {
       method: 'POST',
@@ -111,7 +123,7 @@ async function analyzeImageWithGemini(base64Image: string, mimeType: string = 'i
 
   } catch (error) {
     console.error("❌ Error analizando imagen:", error);
-    return null;
+    throw error; // Re-lanzar el error para que se capture arriba
   }
 }
 
@@ -183,6 +195,11 @@ export default function Home() {
   
   // Estado de carga inicial
   const [isInitializing, setIsInitializing] = useState(true);
+  
+  // Rate limiting para Gemini (15 peticiones por minuto máximo)
+  const lastRequestTime = useRef<number>(0);
+  const requestCount = useRef<number>(0);
+  const requestTimestamps = useRef<number[]>([]);
 
   // Autenticación
   useEffect(() => {
@@ -323,6 +340,25 @@ export default function Home() {
     }
   };
 
+  // Verificar rate limit (15 peticiones por minuto)
+  const checkRateLimit = () => {
+    const now = Date.now();
+    const oneMinuteAgo = now - 60000;
+    
+    // Limpiar timestamps antiguos (más de 1 minuto)
+    requestTimestamps.current = requestTimestamps.current.filter(ts => ts > oneMinuteAgo);
+    
+    // Si hay menos de 15 peticiones en el último minuto, permitir
+    if (requestTimestamps.current.length < 15) {
+      requestTimestamps.current.push(now);
+      console.log(`✅ Rate limit OK: ${requestTimestamps.current.length}/15 peticiones en el último minuto`);
+      return true;
+    }
+    
+    console.warn(`⚠️ Rate limit alcanzado: ${requestTimestamps.current.length}/15 peticiones`);
+    return false;
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -348,6 +384,9 @@ export default function Home() {
       };
       reader.readAsDataURL(file);
     }
+    
+    // Limpiar el input para permitir seleccionar la misma imagen de nuevo
+    e.target.value = '';
   };
 
   const analyzeImage = async (base64: string, mimeType: string) => {
@@ -355,7 +394,7 @@ export default function Home() {
     setAnalysisResult(null);
     
     try {
-      const result = await analyzeImageWithGemini(base64, mimeType);
+      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit);
       
       if (result && !result.error) {
         setAnalysisResult(result);
@@ -430,6 +469,9 @@ export default function Home() {
       };
       reader.readAsDataURL(file);
     }
+    
+    // Limpiar el input para permitir seleccionar la misma imagen de nuevo
+    e.target.value = '';
   };
 
   const analyzeGuestImage = async (base64: string, mimeType: string) => {
@@ -437,7 +479,7 @@ export default function Home() {
     setGuestAnalysisResult(null);
     
     try {
-      const result = await analyzeImageWithGemini(base64, mimeType);
+      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit);
       
       if (result && !result.error) {
         setGuestAnalysisResult(result);
