@@ -167,6 +167,7 @@ export default function Home() {
   const [analysisResult, setAnalysisResult] = useState<NutritionData | null>(null);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
   
   // Estados para modo invitado
   const [isGuestMode, setIsGuestMode] = useState(false);
@@ -174,6 +175,11 @@ export default function Home() {
   const [guestPreviewImage, setGuestPreviewImage] = useState<string | null>(null);
   const [isGuestAnalyzing, setIsGuestAnalyzing] = useState(false);
   const guestFileInputRef = useRef<HTMLInputElement>(null);
+  const guestCameraInputRef = useRef<HTMLInputElement>(null);
+  
+  // Estado para modal de selección
+  const [showImagePickerModal, setShowImagePickerModal] = useState(false);
+  const [showGuestImagePickerModal, setShowGuestImagePickerModal] = useState(false);
   
   // Estado de carga inicial
   const [isInitializing, setIsInitializing] = useState(true);
@@ -565,7 +571,7 @@ export default function Home() {
         {/* Botón Flotante de Escaneo */}
         <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-40">
           <Button 
-            onClick={() => guestFileInputRef.current?.click()} 
+            onClick={() => setShowGuestImagePickerModal(true)} 
             variant="primary"
             className="rounded-full px-8 py-4 shadow-xl shadow-orange-200 text-lg font-bold"
           >
@@ -574,12 +580,55 @@ export default function Home() {
           <input 
             type="file" 
             accept="image/*" 
-            capture="environment" 
             className="hidden" 
             ref={guestFileInputRef} 
             onChange={handleGuestFileSelect} 
           />
+          <input 
+            type="file" 
+            accept="image/*" 
+            capture="environment" 
+            className="hidden" 
+            ref={guestCameraInputRef} 
+            onChange={handleGuestFileSelect} 
+          />
         </div>
+
+        {/* Modal de Selección de Imagen (Invitado) */}
+        {showGuestImagePickerModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4" onClick={() => setShowGuestImagePickerModal(false)}>
+            <div className="bg-white rounded-t-3xl w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">¿Cómo quieres agregar la imagen?</h3>
+              <Button
+                onClick={() => {
+                  guestCameraInputRef.current?.click();
+                  setShowGuestImagePickerModal(false);
+                }}
+                variant="primary"
+                className="w-full py-4 text-base"
+              >
+                <Camera className="w-5 h-5" /> Tomar Foto
+              </Button>
+              <Button
+                onClick={() => {
+                  guestFileInputRef.current?.click();
+                  setShowGuestImagePickerModal(false);
+                }}
+                variant="outline"
+                className="w-full py-4 text-base bg-white hover:bg-slate-50"
+              >
+                <span className="text-xl">🖼️</span> Seleccionar de Galería
+              </Button>
+              <Button
+                onClick={() => setShowGuestImagePickerModal(false)}
+                variant="secondary"
+                className="w-full py-3 text-sm"
+              >
+                Cancelar
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -754,7 +803,7 @@ export default function Home() {
       {/* Botón Flotante de Escaneo */}
       <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-40">
         <Button 
-          onClick={() => fileInputRef.current?.click()} 
+          onClick={() => setShowImagePickerModal(true)} 
           variant="primary"
           className="rounded-full px-8 py-4 shadow-xl shadow-orange-200 text-lg font-bold"
         >
@@ -763,12 +812,55 @@ export default function Home() {
         <input 
           type="file" 
           accept="image/*" 
-          capture="environment" 
           className="hidden" 
           ref={fileInputRef} 
           onChange={handleFileSelect} 
         />
+        <input 
+          type="file" 
+          accept="image/*" 
+          capture="environment" 
+          className="hidden" 
+          ref={cameraInputRef} 
+          onChange={handleFileSelect} 
+        />
       </div>
+
+      {/* Modal de Selección de Imagen (Autenticado) */}
+      {showImagePickerModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4" onClick={() => setShowImagePickerModal(false)}>
+          <div className="bg-white rounded-t-3xl w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">¿Cómo quieres agregar la imagen?</h3>
+            <Button
+              onClick={() => {
+                cameraInputRef.current?.click();
+                setShowImagePickerModal(false);
+              }}
+              variant="primary"
+              className="w-full py-4 text-base"
+            >
+              <Camera className="w-5 h-5" /> Tomar Foto
+            </Button>
+            <Button
+              onClick={() => {
+                fileInputRef.current?.click();
+                setShowImagePickerModal(false);
+              }}
+              variant="outline"
+              className="w-full py-4 text-base bg-white hover:bg-slate-50"
+            >
+              <span className="text-xl">🖼️</span> Seleccionar de Galería
+            </Button>
+            <Button
+              onClick={() => setShowImagePickerModal(false)}
+              variant="secondary"
+              className="w-full py-3 text-sm"
+            >
+              Cancelar
+            </Button>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
