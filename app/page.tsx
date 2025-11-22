@@ -420,6 +420,42 @@ export default function Home() {
     return false;
   };
 
+  // Función para comprimir imagen antes de guardar
+  const compressImage = (base64: string): Promise<string> => {
+    return new Promise((resolve) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        const MAX_WIDTH = 800;
+        const MAX_HEIGHT = 800;
+        
+        let width = img.width;
+        let height = img.height;
+        
+        if (width > height) {
+          if (width > MAX_WIDTH) {
+            height *= MAX_WIDTH / width;
+            width = MAX_WIDTH;
+          }
+        } else {
+          if (height > MAX_HEIGHT) {
+            width *= MAX_HEIGHT / height;
+            height = MAX_HEIGHT;
+          }
+        }
+        
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        ctx?.drawImage(img, 0, 0, width, height);
+        
+        resolve(canvas.toDataURL('image/jpeg', 0.7));
+      };
+      img.src = base64;
+    });
+  };
+
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
@@ -436,8 +472,10 @@ export default function Home() {
       }
 
       const reader = new FileReader();
-      reader.onloadend = () => {
+      reader.onloadend = async () => {
         const base64String = reader.result as string;
+        
+        // Mostrar preview con imagen original (para mejor calidad visual)
         setPreviewImage(base64String);
         
         const base64Data = base64String.split(',')[1];
@@ -476,10 +514,19 @@ export default function Home() {
     if (!user || !analysisResult) return;
     try {
       console.log('💾 Guardando comida:', analysisResult.food_name);
+      
+      // Si previewImage es 'text', guardar null; si es base64, comprimirlo para Firestore
+      let imageToSave = null;
+      if (previewImage && previewImage !== 'text') {
+        console.log('🖼️ Comprimiendo imagen para guardar...');
+        imageToSave = await compressImage(previewImage);
+        console.log('✅ Imagen comprimida');
+      }
+      
       const docRef = await addDoc(collection(db, 'users', user.uid, 'calorie_logs'), {
         ...analysisResult,
         createdAt: serverTimestamp(),
-        imagePreview: previewImage 
+        imagePreview: imageToSave 
       });
       console.log('✅ Comida guardada con ID:', docRef.id);
       
@@ -492,8 +539,9 @@ export default function Home() {
       if (cameraInputRef.current) cameraInputRef.current.value = '';
       
       alert("✅ Comida registrada correctamente");
-    } catch (error) {
+    } catch (error: any) {
       console.error('❌ Error al guardar:', error);
+      console.error('❌ Detalles del error:', error?.message, error?.code);
       alert("❌ Error al guardar. Intenta de nuevo.");
     }
   };
