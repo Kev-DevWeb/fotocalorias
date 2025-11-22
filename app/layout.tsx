@@ -16,17 +16,16 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "xCal - Analiza tu comida con IA",
   description: "Escanea tus comidas con IA y alcanza tus objetivos nutricionales. Calcula calorías y macronutrientes personalizados.",
-  icons: {
-    icon: '/favicon.png',
-    apple: '/apple-icon.png',
-  },
   manifest: '/manifest.json',
-  themeColor: '#f97316',
   appleWebApp: {
     capable: true,
     statusBarStyle: 'default',
     title: 'xCal',
   },
+};
+
+export const viewport = {
+  themeColor: '#f97316',
 };
 
 export default function RootLayout({
