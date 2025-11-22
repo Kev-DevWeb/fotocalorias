@@ -62,7 +62,7 @@ export default function AuthForm({ onLogin, onRegister }: AuthFormProps) {
           <div className="inline-flex items-center justify-center w-16 h-16 bg-orange-500 rounded-full mb-4 shadow-lg">
             <span className="text-3xl">🍕</span>
           </div>
-          <h1 className="text-3xl font-bold text-gray-900 mb-2">FotoCalorías</h1>
+          <h1 className="text-3xl font-bold text-gray-900 mb-2">xCal</h1>
           <p className="text-gray-600">Analiza tu comida con IA</p>
         </div>
 

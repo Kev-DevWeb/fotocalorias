@@ -13,7 +13,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "FotoCalorías - Analiza tu comida con IA",
+  title: "xCal - Analiza tu comida con IA",
   description: "Escanea tus comidas con IA y alcanza tus objetivos nutricionales. Calcula calorías y macronutrientes personalizados.",
 };
 
