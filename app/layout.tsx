@@ -18,6 +18,14 @@ export const metadata: Metadata = {
   description: "Escanea tus comidas con IA y alcanza tus objetivos nutricionales. Calcula calorías y macronutrientes personalizados.",
   icons: {
     icon: '/favicon.png',
+    apple: '/apple-icon.png',
+  },
+  manifest: '/manifest.json',
+  themeColor: '#f97316',
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: 'default',
+    title: 'xCal',
   },
 };
 

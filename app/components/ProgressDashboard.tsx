@@ -46,7 +46,7 @@ export default function ProgressDashboard({ progress }: ProgressDashboardProps) 
         </div>
         <div className="flex justify-between items-center">
           <div className={`text-xs font-medium ${isOverTarget ? 'text-red-500' : 'text-gray-500'}`}>
-            {isOverTarget ? `+${consumed - target}g sobre el objetivo` : `${target - consumed}g restantes`}
+            {isOverTarget ? `+${Math.round((consumed - target) * 10) / 10}g sobre el objetivo` : `${Math.round((target - consumed) * 10) / 10}g restantes`}
           </div>
           <div className={`text-xs font-bold ${isOverTarget ? 'text-red-600' : 'text-gray-600'}`}>
             {percentage}%

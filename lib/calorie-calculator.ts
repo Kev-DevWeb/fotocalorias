@@ -181,9 +181,9 @@ export function calculateDailyProgress(
   targets: MacroTargets
 ): DailyProgress {
   const calculateMetric = (consumed: number, target: number) => ({
-    consumed,
-    target,
-    remaining: Math.max(0, target - consumed),
+    consumed: Math.round(consumed * 10) / 10, // Redondear a 1 decimal
+    target: Math.round(target),
+    remaining: Math.max(0, Math.round((target - consumed) * 10) / 10),
     percentage: target > 0 ? Math.round((consumed / target) * 100) : 0,
   });
   

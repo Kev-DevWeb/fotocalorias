@@ -1,0 +1,24 @@
+{
+  "name": "xCal - Analiza tu comida con IA",
+  "short_name": "xCal",
+  "description": "Escanea tus comidas con IA y alcanza tus objetivos nutricionales",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#ffffff",
+  "theme_color": "#f97316",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/favicon.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/favicon.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
