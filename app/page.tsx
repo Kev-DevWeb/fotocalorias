@@ -130,6 +130,58 @@ async function analyzeImageWithGemini(
   }
 }
 
+// --- FUNCIÓN PARA ANALIZAR TEXTO ---
+async function analyzeTextWithGemini(
+  description: string,
+  rateLimitCheck: () => boolean
+): Promise<NutritionData | null> {
+  try {
+    // Verificar rate limit antes de hacer la petición
+    if (!rateLimitCheck()) {
+      throw new Error('⏱️ Demasiadas peticiones. Espera un momento antes de analizar otro alimento (límite: 15 por minuto)');
+    }
+
+    console.log('🚀 =================================');
+    console.log('📤 NUEVA PETICIÓN DE TEXTO A GEMINI API');
+    console.log('🕐 Timestamp:', new Date().toISOString());
+    console.log('📝 Descripción:', description);
+    console.log('🚀 =================================');
+    
+    const response = await fetch('/api/analyze-text', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        description: description
+      })
+    });
+
+    console.log('📥 Response status:', response.status, response.statusText);
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      console.error('❌ Error response:', errorData);
+      throw new Error(errorData.error || 'Error al analizar el texto');
+    }
+
+    const result = await response.json();
+    console.log('✅ Resultado de Gemini:', result);
+    
+    if (result.error) {
+      console.warn('⚠️ Gemini reportó error:', result.error);
+      return null;
+    }
+
+    console.log('🎉 Análisis exitoso:', result.food_name);
+    return result;
+
+  } catch (error) {
+    console.error("❌ Error analizando texto:", error);
+    throw error;
+  }
+}
+
 // --- COMPONENTES UI ---
 const Card = ({ children, className = "" }: { children: React.ReactNode; className?: string }) => (
   <div className={`bg-white rounded-xl shadow-sm border border-slate-100 p-4 ${className}`}>
@@ -195,6 +247,12 @@ export default function Home() {
   // Estado para modal de selección
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
   const [showGuestImagePickerModal, setShowGuestImagePickerModal] = useState(false);
+  
+  // Estados para descripción por texto
+  const [showTextInputModal, setShowTextInputModal] = useState(false);
+  const [showGuestTextInputModal, setShowGuestTextInputModal] = useState(false);
+  const [foodDescription, setFoodDescription] = useState('');
+  const [isAnalyzingText, setIsAnalyzingText] = useState(false);
   
   // Estado de carga inicial
   const [isInitializing, setIsInitializing] = useState(true);
@@ -446,6 +504,62 @@ export default function Home() {
     }
   };
 
+  // Analizar texto (usuario autenticado)
+  const handleTextSubmit = async () => {
+    if (!foodDescription.trim()) {
+      alert('Por favor describe el alimento');
+      return;
+    }
+
+    setIsAnalyzingText(true);
+    setShowTextInputModal(false);
+
+    try {
+      const result = await analyzeTextWithGemini(foodDescription.trim(), checkRateLimit);
+      
+      if (result && !result.error) {
+        setAnalysisResult(result);
+        setPreviewImage(null); // No hay imagen en este caso
+      } else {
+        alert("No se pudo identificar el alimento. Intenta ser más específico.");
+      }
+    } catch (error: any) {
+      console.error('❌ Error:', error);
+      alert(error.message || "Error al analizar el texto. Intenta de nuevo.");
+    } finally {
+      setIsAnalyzingText(false);
+      setFoodDescription('');
+    }
+  };
+
+  // Analizar texto (modo invitado)
+  const handleGuestTextSubmit = async () => {
+    if (!foodDescription.trim()) {
+      alert('Por favor describe el alimento');
+      return;
+    }
+
+    setIsAnalyzingText(true);
+    setShowGuestTextInputModal(false);
+
+    try {
+      const result = await analyzeTextWithGemini(foodDescription.trim(), checkRateLimit);
+      
+      if (result && !result.error) {
+        setGuestAnalysisResult(result);
+        setGuestPreviewImage(null);
+      } else {
+        alert("No se pudo identificar el alimento. Intenta ser más específico.");
+      }
+    } catch (error: any) {
+      console.error('❌ Error:', error);
+      alert(error.message || "Error al analizar el texto. Intenta de nuevo.");
+    } finally {
+      setIsAnalyzingText(false);
+      setFoodDescription('');
+    }
+  };
+
   // Calcular totales del día
   const totals = logs.reduce((acc, curr) => ({
     calories: acc.calories + (curr.calories || 0),
@@ -690,7 +804,7 @@ export default function Home() {
         {showGuestImagePickerModal && (
           <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4" onClick={() => setShowGuestImagePickerModal(false)}>
             <div className="bg-white rounded-t-3xl w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
-              <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">¿Cómo quieres agregar la imagen?</h3>
+              <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">¿Cómo quieres agregar el alimento?</h3>
               <Button
                 onClick={() => {
                   guestCameraInputRef.current?.click();
@@ -712,12 +826,60 @@ export default function Home() {
                 <span className="text-xl">🖼️</span> Seleccionar de Galería
               </Button>
               <Button
+                onClick={() => {
+                  setShowGuestImagePickerModal(false);
+                  setShowGuestTextInputModal(true);
+                }}
+                variant="outline"
+                className="w-full py-4 text-base bg-white hover:bg-slate-50"
+              >
+                <span className="text-xl">✏️</span> Describir Alimento
+              </Button>
+              <Button
                 onClick={() => setShowGuestImagePickerModal(false)}
                 variant="secondary"
                 className="w-full py-3 text-sm"
               >
                 Cancelar
               </Button>
+            </div>
+          </div>
+        )}
+
+        {/* Modal de Descripción por Texto (Invitado) */}
+        {showGuestTextInputModal && (
+          <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowGuestTextInputModal(false)}>
+            <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+              <h3 className="text-lg font-bold text-slate-900">Describe tu alimento</h3>
+              <p className="text-sm text-slate-600">Ejemplo: "2 tacos de carne asada con tortilla de maíz" o "1 taza de arroz con pollo"</p>
+              <textarea
+                value={foodDescription}
+                onChange={(e) => setFoodDescription(e.target.value)}
+                placeholder="Escribe aquí la descripción..."
+                className="w-full h-32 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-slate-900 placeholder:text-slate-400 resize-none"
+                maxLength={500}
+              />
+              <div className="text-xs text-slate-500 text-right">{foodDescription.length}/500</div>
+              <div className="flex gap-3">
+                <Button
+                  onClick={() => {
+                    setShowGuestTextInputModal(false);
+                    setFoodDescription('');
+                  }}
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  Cancelar
+                </Button>
+                <Button
+                  onClick={handleGuestTextSubmit}
+                  variant="primary"
+                  className="flex-1"
+                  disabled={!foodDescription.trim() || isAnalyzingText}
+                >
+                  {isAnalyzingText ? <Loader2 className="w-5 h-5 animate-spin" /> : '✨'} Analizar
+                </Button>
+              </div>
             </div>
           </div>
         )}
@@ -944,7 +1106,7 @@ export default function Home() {
       {showImagePickerModal && (
         <div className="fixed inset-0 bg-black/50 flex items-end justify-center z-50 p-4" onClick={() => setShowImagePickerModal(false)}>
           <div className="bg-white rounded-t-3xl w-full max-w-md p-6 space-y-3" onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">¿Cómo quieres agregar la imagen?</h3>
+            <h3 className="text-lg font-bold text-slate-900 mb-4 text-center">¿Cómo quieres agregar el alimento?</h3>
             <Button
               onClick={() => {
                 cameraInputRef.current?.click();
@@ -966,12 +1128,60 @@ export default function Home() {
               <span className="text-xl">🖼️</span> Seleccionar de Galería
             </Button>
             <Button
+              onClick={() => {
+                setShowImagePickerModal(false);
+                setShowTextInputModal(true);
+              }}
+              variant="outline"
+              className="w-full py-4 text-base bg-white hover:bg-slate-50"
+            >
+              <span className="text-xl">✏️</span> Describir Alimento
+            </Button>
+            <Button
               onClick={() => setShowImagePickerModal(false)}
               variant="secondary"
               className="w-full py-3 text-sm"
             >
               Cancelar
             </Button>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Descripción por Texto (Autenticado) */}
+      {showTextInputModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTextInputModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
+            <h3 className="text-lg font-bold text-slate-900">Describe tu alimento</h3>
+            <p className="text-sm text-slate-600">Ejemplo: "2 tacos de carne asada con tortilla de maíz" o "1 taza de arroz con pollo"</p>
+            <textarea
+              value={foodDescription}
+              onChange={(e) => setFoodDescription(e.target.value)}
+              placeholder="Escribe aquí la descripción..."
+              className="w-full h-32 px-4 py-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent text-slate-900 placeholder:text-slate-400 resize-none"
+              maxLength={500}
+            />
+            <div className="text-xs text-slate-500 text-right">{foodDescription.length}/500</div>
+            <div className="flex gap-3">
+              <Button
+                onClick={() => {
+                  setShowTextInputModal(false);
+                  setFoodDescription('');
+                }}
+                variant="secondary"
+                className="flex-1"
+              >
+                Cancelar
+              </Button>
+              <Button
+                onClick={handleTextSubmit}
+                variant="primary"
+                className="flex-1"
+                disabled={!foodDescription.trim() || isAnalyzingText}
+              >
+                {isAnalyzingText ? <Loader2 className="w-5 h-5 animate-spin" /> : '✨'} Analizar
+              </Button>
+            </div>
           </div>
         </div>
       )}
