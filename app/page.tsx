@@ -51,6 +51,9 @@ interface NutritionData {
   protein: number;
   carbs: number;
   fat: number;
+  sugar?: number;
+  fiber?: number;
+  sodium?: number;
   confidence?: string;
   detected_items?: string[];
   portion_note?: string;
@@ -414,16 +417,26 @@ export default function Home() {
   const saveLog = async () => {
     if (!user || !analysisResult) return;
     try {
-      await addDoc(collection(db, 'users', user.uid, 'calorie_logs'), {
+      console.log('💾 Guardando comida:', analysisResult.food_name);
+      const docRef = await addDoc(collection(db, 'users', user.uid, 'calorie_logs'), {
         ...analysisResult,
         createdAt: serverTimestamp(),
         imagePreview: previewImage 
       });
+      console.log('✅ Comida guardada con ID:', docRef.id);
+      
+      // Limpiar estados
       setPreviewImage(null);
       setAnalysisResult(null);
+      
+      // Resetear inputs de archivo
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      if (cameraInputRef.current) cameraInputRef.current.value = '';
+      
+      alert("✅ Comida registrada correctamente");
     } catch (error) {
-      console.error(error);
-      alert("Error al guardar");
+      console.error('❌ Error al guardar:', error);
+      alert("❌ Error al guardar. Intenta de nuevo.");
     }
   };
 
@@ -439,7 +452,10 @@ export default function Home() {
     protein: acc.protein + (curr.protein || 0),
     carbs: acc.carbs + (curr.carbs || 0),
     fat: acc.fat + (curr.fat || 0),
-  }), { calories: 0, protein: 0, carbs: 0, fat: 0 });
+    sugar: acc.sugar + (curr.sugar || 0),
+    fiber: acc.fiber + (curr.fiber || 0),
+    sodium: acc.sodium + (curr.sodium || 0),
+  }), { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, sodium: 0 });
 
   // Calcular progreso si hay targets
   const progress = userData?.targets 
@@ -526,7 +542,7 @@ export default function Home() {
                 <Pizza className="w-5 h-5 text-white" />
               </div>
               <div>
-                <h1 className="font-bold text-lg">FotoCalorías</h1>
+                <h1 className="font-bold text-lg">xCal</h1>
                 <p className="text-xs text-slate-500">Modo Invitado (solo análisis)</p>
               </div>
             </div>
@@ -597,6 +613,28 @@ export default function Home() {
                           <div className="text-lg font-bold text-yellow-700">{guestAnalysisResult.fat}g</div>
                         </div>
                       </div>
+                      {(guestAnalysisResult.sugar || guestAnalysisResult.fiber || guestAnalysisResult.sodium) && (
+                        <div className="grid grid-cols-3 gap-2">
+                          {guestAnalysisResult.sugar !== undefined && (
+                            <div className="bg-pink-50 rounded-lg p-2 text-center">
+                              <div className="text-xs text-pink-600 font-semibold">Azúcar</div>
+                              <div className="text-lg font-bold text-pink-700">{guestAnalysisResult.sugar}g</div>
+                            </div>
+                          )}
+                          {guestAnalysisResult.fiber !== undefined && (
+                            <div className="bg-purple-50 rounded-lg p-2 text-center">
+                              <div className="text-xs text-purple-600 font-semibold">Fibra</div>
+                              <div className="text-lg font-bold text-purple-700">{guestAnalysisResult.fiber}g</div>
+                            </div>
+                          )}
+                          {guestAnalysisResult.sodium !== undefined && (
+                            <div className="bg-red-50 rounded-lg p-2 text-center">
+                              <div className="text-xs text-red-600 font-semibold">Sodio</div>
+                              <div className="text-lg font-bold text-red-700">{guestAnalysisResult.sodium}mg</div>
+                            </div>
+                          )}
+                        </div>
+                      )}
                       <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-sm text-orange-700">
                         💡 <strong>Regístrate</strong> para guardar tus comidas y ver tu progreso diario
                       </div>
@@ -705,7 +743,7 @@ export default function Home() {
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <Loader2 className="animate-spin text-orange-500 w-12 h-12 mx-auto mb-4" />
-          <p className="text-slate-600 font-medium">Cargando FotoCalorías...</p>
+          <p className="text-slate-600 font-medium">Cargando xCal...</p>
         </div>
       </div>
     );
@@ -733,7 +771,7 @@ export default function Home() {
               <Pizza className="w-5 h-5 text-white" />
             </div>
             <div>
-              <h1 className="font-bold text-lg">FotoCalorías</h1>
+              <h1 className="font-bold text-lg">xCal</h1>
               <p className="text-xs text-slate-500">Hola, {userData?.displayName || 'Usuario'}</p>
             </div>
           </div>
@@ -802,6 +840,28 @@ export default function Home() {
                         <div className="text-lg font-bold text-yellow-700">{analysisResult.fat}g</div>
                       </div>
                     </div>
+                    {(analysisResult.sugar || analysisResult.fiber || analysisResult.sodium) && (
+                      <div className="grid grid-cols-3 gap-2">
+                        {analysisResult.sugar !== undefined && (
+                          <div className="bg-pink-50 rounded-lg p-2 text-center">
+                            <div className="text-xs text-pink-600 font-semibold">Azúcar</div>
+                            <div className="text-lg font-bold text-pink-700">{analysisResult.sugar}g</div>
+                          </div>
+                        )}
+                        {analysisResult.fiber !== undefined && (
+                          <div className="bg-purple-50 rounded-lg p-2 text-center">
+                            <div className="text-xs text-purple-600 font-semibold">Fibra</div>
+                            <div className="text-lg font-bold text-purple-700">{analysisResult.fiber}g</div>
+                          </div>
+                        )}
+                        {analysisResult.sodium !== undefined && (
+                          <div className="bg-red-50 rounded-lg p-2 text-center">
+                            <div className="text-xs text-red-600 font-semibold">Sodio</div>
+                            <div className="text-lg font-bold text-red-700">{analysisResult.sodium}mg</div>
+                          </div>
+                        )}
+                      </div>
+                    )}
                     <Button onClick={saveLog} variant="primary" className="w-full mt-4">
                       <Check className="w-5 h-5" /> Confirmar y Guardar
                     </Button>

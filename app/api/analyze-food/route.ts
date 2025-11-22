@@ -66,6 +66,9 @@ export async function POST(request: NextRequest) {
   "protein": gramos,
   "carbs": gramos,
   "fat": gramos,
+  "sugar": gramos,
+  "fiber": gramos,
+  "sodium": miligramos,
   "confidence": "Alta|Media|Baja",
   "detected_items": ["item1","item2"],
   "portion_note": "descripción breve"
