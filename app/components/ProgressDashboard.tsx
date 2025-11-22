@@ -150,6 +150,33 @@ export default function ProgressDashboard({ progress }: ProgressDashboardProps) 
           color="bg-yellow-500"
           icon="🥑"
         />
+        
+        <MacroBar
+          label="Azúcar"
+          consumed={progress.sugar.consumed}
+          target={progress.sugar.target}
+          percentage={progress.sugar.percentage}
+          color="bg-pink-500"
+          icon="🍬"
+        />
+        
+        <MacroBar
+          label="Fibra"
+          consumed={progress.fiber.consumed}
+          target={progress.fiber.target}
+          percentage={progress.fiber.percentage}
+          color="bg-purple-500"
+          icon="🌾"
+        />
+        
+        <MacroBar
+          label="Sodio"
+          consumed={progress.sodium.consumed}
+          target={progress.sodium.target}
+          percentage={progress.sodium.percentage}
+          color="bg-red-500"
+          icon="🧂"
+        />
       </div>
 
       {/* Resumen rápido */}
@@ -165,6 +192,18 @@ export default function ProgressDashboard({ progress }: ProgressDashboardProps) 
         <div className="bg-yellow-50 rounded-lg p-3 text-center">
           <div className="text-2xl font-bold text-yellow-600">{progress.fat.percentage}%</div>
           <div className="text-xs text-yellow-700 font-medium">Grasas</div>
+        </div>
+        <div className="bg-pink-50 rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-pink-600">{progress.sugar.percentage}%</div>
+          <div className="text-xs text-pink-700 font-medium">Azúcar</div>
+        </div>
+        <div className="bg-purple-50 rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-purple-600">{progress.fiber.percentage}%</div>
+          <div className="text-xs text-purple-700 font-medium">Fibra</div>
+        </div>
+        <div className="bg-red-50 rounded-lg p-3 text-center">
+          <div className="text-2xl font-bold text-red-600">{progress.sodium.percentage}%</div>
+          <div className="text-xs text-red-700 font-medium">Sodio</div>
         </div>
       </div>
     </div>

@@ -1086,20 +1086,30 @@ export default function Home() {
             <div className="space-y-3">
               {logs.map((log) => (
                 <Card key={log.id} className="flex items-center gap-4 p-3 animate-in slide-in-from-bottom-2 duration-300">
-                  {log.imagePreview ? (
-                    <img src={log.imagePreview} className="w-16 h-16 rounded-lg object-cover bg-slate-100" alt="food" />
-                  ) : (
-                    <div className="w-16 h-16 rounded-lg bg-orange-100 flex items-center justify-center text-orange-500">
-                      <Pizza className="w-8 h-8" />
-                    </div>
-                  )}
+                  <img 
+                    src={log.imagePreview || '/default-images/food.png'} 
+                    className="w-16 h-16 rounded-lg object-cover bg-slate-100" 
+                    alt="food"
+                    onError={(e) => {
+                      e.currentTarget.src = '/default-images/food.png';
+                    }}
+                  />
                   <div className="flex-1 min-w-0">
                     <h4 className="font-bold text-slate-800 truncate">{log.food_name}</h4>
-                    <div className="flex items-center gap-3 text-xs text-slate-500 mt-1">
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
                       <span className="font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">{log.calories} kcal</span>
-                      <span>P: {log.protein}g</span>
-                      <span>C: {log.carbs}g</span>
-                      <span>G: {log.fat}g</span>
+                      <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded">P: {log.protein}g</span>
+                      <span className="bg-green-50 text-green-600 px-2 py-0.5 rounded">C: {log.carbs}g</span>
+                      <span className="bg-yellow-50 text-yellow-600 px-2 py-0.5 rounded">G: {log.fat}g</span>
+                      {log.sugar !== undefined && log.sugar > 0 && (
+                        <span className="bg-pink-50 text-pink-600 px-2 py-0.5 rounded">Az: {log.sugar}g</span>
+                      )}
+                      {log.fiber !== undefined && log.fiber > 0 && (
+                        <span className="bg-purple-50 text-purple-600 px-2 py-0.5 rounded">Fb: {log.fiber}g</span>
+                      )}
+                      {log.sodium !== undefined && log.sodium > 0 && (
+                        <span className="bg-red-50 text-red-600 px-2 py-0.5 rounded">Na: {log.sodium}mg</span>
+                      )}
                     </div>
                   </div>
                   <button onClick={() => deleteLog(log.id)} className="text-slate-300 hover:text-red-500 p-2">

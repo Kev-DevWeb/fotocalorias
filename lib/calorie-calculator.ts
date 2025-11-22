@@ -171,17 +171,20 @@ export interface DailyProgress {
   protein: { consumed: number; target: number; remaining: number; percentage: number };
   carbs: { consumed: number; target: number; remaining: number; percentage: number };
   fat: { consumed: number; target: number; remaining: number; percentage: number };
+  sugar: { consumed: number; target: number; remaining: number; percentage: number };
+  fiber: { consumed: number; target: number; remaining: number; percentage: number };
+  sodium: { consumed: number; target: number; remaining: number; percentage: number };
 }
 
 export function calculateDailyProgress(
-  consumed: { calories: number; protein: number; carbs: number; fat: number },
+  consumed: { calories: number; protein: number; carbs: number; fat: number; sugar?: number; fiber?: number; sodium?: number },
   targets: MacroTargets
 ): DailyProgress {
   const calculateMetric = (consumed: number, target: number) => ({
     consumed,
     target,
     remaining: Math.max(0, target - consumed),
-    percentage: Math.round((consumed / target) * 100),
+    percentage: target > 0 ? Math.round((consumed / target) * 100) : 0,
   });
   
   return {
@@ -189,5 +192,8 @@ export function calculateDailyProgress(
     protein: calculateMetric(consumed.protein, targets.protein),
     carbs: calculateMetric(consumed.carbs, targets.carbs),
     fat: calculateMetric(consumed.fat, targets.fat),
+    sugar: calculateMetric(consumed.sugar || 0, 50), // Meta: 50g máximo de azúcar añadido
+    fiber: calculateMetric(consumed.fiber || 0, 25), // Meta: 25g mínimo de fibra
+    sodium: calculateMetric(consumed.sodium || 0, 2300), // Meta: 2300mg máximo de sodio
   };
 }

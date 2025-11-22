@@ -16,6 +16,9 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: "xCal - Analiza tu comida con IA",
   description: "Escanea tus comidas con IA y alcanza tus objetivos nutricionales. Calcula calorías y macronutrientes personalizados.",
+  icons: {
+    icon: '/favicon.png',
+  },
 };
 
 export default function RootLayout({
