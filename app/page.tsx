@@ -13,6 +13,9 @@ import {
 } from 'firebase/auth';
 import { 
   getFirestore, 
+  initializeFirestore,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   collection, 
   addDoc, 
   onSnapshot, 
@@ -21,13 +24,15 @@ import {
   doc,
   setDoc,
   query,
-  orderBy
+  orderBy,
+  where
 } from 'firebase/firestore';
-import { Camera, Check, Trash2, Loader2, Pizza, LogOut, Settings, X } from 'lucide-react';
+import { Camera, Check, Trash2, Loader2, Pizza, LogOut, Settings, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
 import { UserProfile, MacroTargets, calculateDailyProgress } from '@/lib/calorie-calculator';
 import AuthForm from './components/AuthForm';
 import ProfileSetup from './components/ProfileSetup';
 import ProgressDashboard from './components/ProgressDashboard';
+import imageCompression from 'browser-image-compression';
 
 // --- CONFIGURACIÓN FIREBASE ---
 const firebaseConfig = {
@@ -42,7 +47,22 @@ const firebaseConfig = {
 // Inicialización segura para Next.js
 const app = !getApps().length ? initializeApp(firebaseConfig) : getApps()[0];
 const auth = getAuth(app);
-const db = getFirestore(app);
+
+// Habilitar Offline Persistence de FireStore
+let db: ReturnType<typeof getFirestore>;
+
+if (!getApps().length || getApps()[0].name === "[DEFAULT]") {
+  // Solo inicializar con caché si estamos en el cliente y es la primera vez
+  if (typeof window !== 'undefined' && !getApps().length) {
+    db = initializeFirestore(app, {
+      localCache: persistentLocalCache({tabManager: persistentMultipleTabManager()})
+    });
+  } else {
+    db = getFirestore(app);
+  }
+} else {
+  db = getFirestore(app);
+}
 
 // --- TIPOS ---
 interface NutritionData {
@@ -79,7 +99,8 @@ interface UserData {
 async function analyzeImageWithGemini(
   base64Image: string, 
   mimeType: string = 'image/jpeg',
-  rateLimitCheck: () => boolean
+  rateLimitCheck: () => boolean,
+  portionContext: string = ''
 ): Promise<NutritionData | null> {
   try {
     // Verificar rate limit antes de hacer la petición
@@ -101,7 +122,8 @@ async function analyzeImageWithGemini(
       },
       body: JSON.stringify({
         image: base64Image,
-        mimeType: mimeType
+        mimeType: mimeType,
+        portionContext: portionContext
       })
     });
 
@@ -244,6 +266,14 @@ export default function Home() {
   const guestFileInputRef = useRef<HTMLInputElement>(null);
   const guestCameraInputRef = useRef<HTMLInputElement>(null);
   
+  // Estados de contexto de porción
+  const [portionContext, setPortionContext] = useState('');
+  const [guestPortionContext, setGuestPortionContext] = useState('');
+  const [pendingBase64, setPendingBase64] = useState<string | null>(null);
+  const [pendingMimeType, setPendingMimeType] = useState<string | null>(null);
+  const [guestPendingBase64, setGuestPendingBase64] = useState<string | null>(null);
+  const [guestPendingMimeType, setGuestPendingMimeType] = useState<string | null>(null);
+  
   // Estado para modal de selección
   const [showImagePickerModal, setShowImagePickerModal] = useState(false);
   const [showGuestImagePickerModal, setShowGuestImagePickerModal] = useState(false);
@@ -253,6 +283,15 @@ export default function Home() {
   const [showGuestTextInputModal, setShowGuestTextInputModal] = useState(false);
   const [foodDescription, setFoodDescription] = useState('');
   const [isAnalyzingText, setIsAnalyzingText] = useState(false);
+
+  // Estados para entrada manual (cuando la IA falla o se acaban los tokens)
+  const [showManualInputModal, setShowManualInputModal] = useState(false);
+  const [manualEntry, setManualEntry] = useState<Partial<NutritionData>>({
+    food_name: '', calories: 0, protein: 0, carbs: 0, fat: 0
+  });
+
+  // Estado para filtrado por fecha
+  const [selectedDate, setSelectedDate] = useState<Date>(new Date());
   
   // Estado de carga inicial
   const [isInitializing, setIsInitializing] = useState(true);
@@ -335,19 +374,31 @@ export default function Home() {
         ...doc.data() 
       })) as CalorieLog[];
       
-      // Filtrar solo los de hoy
-      const todayLogs = logsData.filter(log => {
+      // Filtrar solo los de la fecha seleccionada
+      const filteredLogs = logsData.filter(log => {
         if (!log.createdAt) return false;
-        const logDate = new Date(log.createdAt.seconds * 1000);
-        return logDate.toDateString() === new Date().toDateString();
+        
+        let logDate: Date;
+        if (log.createdAt.toDate) {
+          // Es un Timestamp de cliente o servidor
+          logDate = log.createdAt.toDate();
+        } else if (log.createdAt.seconds) {
+          // Backup si llega en raw format
+          logDate = new Date(log.createdAt.seconds * 1000);
+        } else {
+          // Backup extremo para timestamp recién creado en cliente que aún no sincronizó
+          logDate = new Date();
+        }
+
+        return logDate.toDateString() === selectedDate.toDateString();
       });
 
-      console.log(`✅ Logs de hoy: ${todayLogs.length}`);
-      setLogs(todayLogs);
+      console.log(`✅ Logs para ${selectedDate.toLocaleDateString()}: ${filteredLogs.length}`);
+      setLogs(filteredLogs);
     });
 
     return () => unsubscribe();
-  }, [user]);
+  }, [user, selectedDate]);
 
   // --- HANDLERS ---
   const handleLogin = async (email: string, password: string) => {
@@ -456,7 +507,7 @@ export default function Home() {
     });
   };
 
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       // Validar tipo
@@ -471,21 +522,45 @@ export default function Home() {
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = async () => {
-        const base64String = reader.result as string;
-        
-        // Mostrar preview con imagen original (para mejor calidad visual)
-        setPreviewImage(base64String);
-        
-        const base64Data = base64String.split(',')[1];
-        analyzeImage(base64Data, file.type);
-      };
-      reader.readAsDataURL(file);
+      try {
+        // Comprimir imagen usando browser-image-compression
+        const options = {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true,
+          initialQuality: 0.8
+        };
+        const compressedFile = await imageCompression(file, options);
+        console.log(`Imagen original: ${(file.size/1024/1024).toFixed(2)} MB`);
+        console.log(`Imagen comprimida: ${(compressedFile.size/1024/1024).toFixed(2)} MB`);
+
+        const reader = new FileReader();
+        reader.onloadend = async () => {
+          const base64String = reader.result as string;
+          
+          // Mostrar modal con preview y pedir contexto antes de analizar
+          setPreviewImage(base64String);
+          setPendingBase64(base64String.split(',')[1]);
+          setPendingMimeType(compressedFile.type);
+          setAnalysisResult(null);
+          setIsAnalyzing(false);
+          setPortionContext(''); // Resetear contexto cada vez
+        };
+        reader.readAsDataURL(compressedFile);
+      } catch (error) {
+        console.error('Error al comprimir la imagen:', error);
+        alert('Error al procesar la imagen. Intenta de nuevo.');
+      }
     }
     
     // Limpiar el input para permitir seleccionar la misma imagen de nuevo
     e.target.value = '';
+  };
+
+  const triggerAnalysis = () => {
+    if (pendingBase64 && pendingMimeType) {
+      analyzeImage(pendingBase64, pendingMimeType);
+    }
   };
 
   const analyzeImage = async (base64: string, mimeType: string) => {
@@ -493,7 +568,7 @@ export default function Home() {
     setAnalysisResult(null);
     
     try {
-      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit);
+      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit, portionContext);
       
       if (result && !result.error) {
         setAnalysisResult(result);
@@ -515,12 +590,13 @@ export default function Home() {
     try {
       console.log('💾 Guardando comida:', analysisResult.food_name);
       
-      // Si previewImage es 'text', guardar null; si es base64, comprimirlo para Firestore
+      // Si previewImage es 'text', guardar null; si es base64, comprimirlo y guardarlo directo
       let imageToSave = null;
       if (previewImage && previewImage !== 'text') {
-        console.log('🖼️ Comprimiendo imagen para guardar...');
-        imageToSave = await compressImage(previewImage);
-        console.log('✅ Imagen comprimida');
+        console.log('🖼️ Comprimiendo imagen para guardar en DB...');
+        const compressedBase64 = await compressImage(previewImage);
+        imageToSave = compressedBase64;
+        console.log('✅ Imagen lista para guardar:', (imageToSave.length / 1024).toFixed(2), 'KB');
       }
       
       const docRef = await addDoc(collection(db, 'users', user.uid, 'calorie_logs'), {
@@ -584,6 +660,26 @@ export default function Home() {
     }
   };
 
+  const handleManualSubmit = () => {
+    if (!manualEntry.food_name) {
+      alert("Por favor, ingresa el nombre de la comida");
+      return;
+    }
+    
+    // Crear el resultado directamente
+    setAnalysisResult({
+      food_name: manualEntry.food_name || 'Comida Manual',
+      calories: manualEntry.calories || 0,
+      protein: manualEntry.protein || 0,
+      carbs: manualEntry.carbs || 0,
+      fat: manualEntry.fat || 0,
+      confidence: 'Alta'
+    });
+    
+    setShowManualInputModal(false);
+    setPreviewImage('text');
+  };
+
   // Analizar texto (modo invitado)
   const handleGuestTextSubmit = async () => {
     if (!foodDescription.trim()) {
@@ -629,7 +725,7 @@ export default function Home() {
     : null;
 
   // Handler para modo invitado
-  const handleGuestFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleGuestFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       if (!['image/jpeg', 'image/png', 'image/webp'].includes(file.type)) {
@@ -641,19 +737,42 @@ export default function Home() {
         return;
       }
 
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        const base64String = reader.result as string;
-        setGuestPreviewImage(base64String);
-        
-        const base64Data = base64String.split(',')[1];
-        analyzeGuestImage(base64Data, file.type);
-      };
-      reader.readAsDataURL(file);
+      try {
+        const options = {
+          maxSizeMB: 0.5,
+          maxWidthOrHeight: 1200,
+          useWebWorker: true,
+          initialQuality: 0.8
+        };
+        const compressedFile = await imageCompression(file, options);
+        console.log(`Imagen invitado original: ${(file.size/1024/1024).toFixed(2)} MB`);
+        console.log(`Imagen invitado comprimida: ${(compressedFile.size/1024/1024).toFixed(2)} MB`);
+
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          const base64String = reader.result as string;
+          setGuestPreviewImage(base64String);
+          setGuestPendingBase64(base64String.split(',')[1]);
+          setGuestPendingMimeType(compressedFile.type);
+          setGuestAnalysisResult(null);
+          setIsGuestAnalyzing(false);
+          setGuestPortionContext('');
+        };
+        reader.readAsDataURL(compressedFile);
+      } catch (error) {
+        console.error('Error al comprimir la imagen:', error);
+        alert('Error al procesar la imagen. Intenta de nuevo.');
+      }
     }
     
     // Limpiar el input para permitir seleccionar la misma imagen de nuevo
     e.target.value = '';
+  };
+
+  const triggerGuestAnalysis = () => {
+    if (guestPendingBase64 && guestPendingMimeType) {
+      analyzeGuestImage(guestPendingBase64, guestPendingMimeType);
+    }
   };
 
   const analyzeGuestImage = async (base64: string, mimeType: string) => {
@@ -661,7 +780,7 @@ export default function Home() {
     setGuestAnalysisResult(null);
     
     try {
-      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit);
+      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit, guestPortionContext);
       
       if (result && !result.error) {
         setGuestAnalysisResult(result);
@@ -804,7 +923,27 @@ export default function Home() {
                         <Check className="w-5 h-5" /> Entendido
                       </Button>
                     </div>
-                  ) : null}
+                  ) : (
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="font-bold text-lg text-slate-800">Contexto opcional</h3>
+                        <p className="text-sm text-slate-500 mb-2">
+                          Ayuda a la IA a calcular mejor (ej. &quot;plato pequeño&quot;, &quot;me comí la mitad&quot;).
+                        </p>
+                        <input 
+                          type="text" 
+                          placeholder="Ej. Plato hondo grande..."
+                          value={guestPortionContext}
+                          onChange={(e) => setGuestPortionContext(e.target.value)}
+                          className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+                          onKeyDown={(e) => e.key === 'Enter' && triggerGuestAnalysis()}
+                        />
+                      </div>
+                      <Button onClick={triggerGuestAnalysis} variant="primary" className="w-full">
+                        <Camera className="w-4 h-4" /> Analizar Imagen
+                      </Button>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -895,7 +1034,7 @@ export default function Home() {
           <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowGuestTextInputModal(false)}>
             <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
               <h3 className="text-lg font-bold text-slate-900">Describe tu alimento</h3>
-              <p className="text-sm text-slate-600">Ejemplo: "2 tacos de carne asada con tortilla de maíz" o "1 taza de arroz con pollo"</p>
+              <p className="text-sm text-slate-600">Ejemplo: &quot;2 tacos de carne asada con tortilla de maíz&quot; o &quot;1 taza de arroz con pollo&quot;</p>
               <textarea
                 value={foodDescription}
                 onChange={(e) => setFoodDescription(e.target.value)}
@@ -1000,7 +1139,47 @@ export default function Home() {
         </div>
       </header>
 
-      <main className="max-w-md mx-auto p-4 space-y-6">
+      <main className="max-w-md mx-auto p-4 space-y-6 pb-24">
+        {/* Selector de Fecha */}
+        <div className="flex items-center justify-between bg-white px-4 py-3 rounded-xl shadow-sm border border-slate-100">
+          <button 
+            onClick={() => {
+              const d = new Date(selectedDate);
+              d.setDate(d.getDate() - 1);
+              setSelectedDate(d);
+            }}
+            className="p-2 hover:bg-slate-50 text-slate-500 rounded-lg transition-colors"
+          >
+            <ChevronLeft className="w-5 h-5" />
+          </button>
+          
+          <div className="flex items-center justify-center gap-2 flex-col">
+            <span className="text-sm font-bold text-slate-800 tracking-wide uppercase">
+              {selectedDate.toDateString() === new Date().toDateString() 
+                ? 'HOY' 
+                : selectedDate.toLocaleDateString('es-ES', { weekday: 'short', day: 'numeric', month: 'short' })}
+            </span>
+          </div>
+
+          <button 
+            onClick={() => {
+              // No permitir avanzar más allá de hoy (opcional)
+              const d = new Date(selectedDate);
+              d.setDate(d.getDate() + 1);
+              // Si d es mayor a hoy, podríamos bloquearlo, pero lo dejaremos libre o simplemente limitado a hoy:
+              if (d <= new Date()) setSelectedDate(d);
+            }}
+            className={`p-2 rounded-lg transition-colors ${
+              new Date(selectedDate).toDateString() === new Date().toDateString() 
+              ? 'opacity-30 cursor-not-allowed text-slate-400' 
+              : 'hover:bg-slate-50 text-slate-500'
+            }`}
+            disabled={new Date(selectedDate).toDateString() === new Date().toDateString()}
+          >
+            <ChevronRight className="w-5 h-5" />
+          </button>
+        </div>
+
         {/* Dashboard de Progreso */}
         {progress && <ProgressDashboard progress={progress} />}
 
@@ -1064,7 +1243,27 @@ export default function Home() {
                       <Check className="w-5 h-5" /> Confirmar y Guardar
                     </Button>
                   </div>
-                ) : null}
+                ) : (
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="font-bold text-lg text-slate-800">Contexto opcional</h3>
+                      <p className="text-sm text-slate-500 mb-2">
+                        Ayuda a la IA a calcular mejor (ej. &quot;plato pequeño&quot;, &quot;me comí la mitad&quot;).
+                      </p>
+                      <input 
+                        type="text" 
+                        placeholder="Ej. Plato hondo grande..."
+                        value={portionContext}
+                        onChange={(e) => setPortionContext(e.target.value)}
+                        className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        onKeyDown={(e) => e.key === 'Enter' && triggerAnalysis()}
+                      />
+                    </div>
+                    <Button onClick={triggerAnalysis} variant="primary" className="w-full">
+                      <Camera className="w-4 h-4" /> Analizar Imagen
+                    </Button>
+                  </div>
+                )}
               </div>
             </div>
           </div>
@@ -1074,13 +1273,15 @@ export default function Home() {
         <div className="space-y-4">
           <h2 className="font-bold text-slate-800 text-lg flex items-center gap-2">
             <span className="text-2xl">🍽️</span>
-            Comidas de Hoy
+            Comidas del Día
             <span className="text-sm font-normal text-slate-500">({logs.length})</span>
           </h2>
           {logs.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-white">
-              <p className="text-slate-400 mb-2">Sin registros hoy.</p>
-              <p className="text-xs text-slate-400">Toca el botón de abajo para escanear tu comida</p>
+              <p className="text-slate-400 mb-2">Sin registros en esta fecha.</p>
+              {selectedDate.toDateString() === new Date().toDateString() && (
+                <p className="text-xs text-slate-400">Toca el botón &quot;+&quot; de abajo para escanear tu comida</p>
+              )}
             </div>
           ) : (
             <div className="space-y-3">
@@ -1181,7 +1382,17 @@ export default function Home() {
               variant="outline"
               className="w-full py-4 text-base bg-white hover:bg-slate-50"
             >
-              <span className="text-xl">✏️</span> Describir Alimento
+              <span className="text-xl">✏️</span> Describir con Inteligencia Artificial
+            </Button>
+            <Button
+              onClick={() => {
+                setShowImagePickerModal(false);
+                setShowManualInputModal(true); // Abrir el modal de carga manual
+              }}
+              variant="outline"
+              className="w-full py-4 text-base bg-white hover:bg-slate-50"
+            >
+              <span className="text-xl">✍️</span> Ingresar Macros Manualmente
             </Button>
             <Button
               onClick={() => setShowImagePickerModal(false)}
@@ -1199,7 +1410,7 @@ export default function Home() {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowTextInputModal(false)}>
           <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-bold text-slate-900">Describe tu alimento</h3>
-            <p className="text-sm text-slate-600">Ejemplo: "2 tacos de carne asada con tortilla de maíz" o "1 taza de arroz con pollo"</p>
+            <p className="text-sm text-slate-600">Ejemplo: &quot;2 tacos de carne asada con tortilla de maíz&quot; o &quot;1 taza de arroz con pollo&quot;</p>
             <textarea
               value={foodDescription}
               onChange={(e) => setFoodDescription(e.target.value)}
@@ -1226,6 +1437,75 @@ export default function Home() {
                 disabled={!foodDescription.trim() || isAnalyzingText}
               >
                 {isAnalyzingText ? <Loader2 className="w-5 h-5 animate-spin" /> : '✨'} Analizar
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* Modal de Ingreso Manual */}
+      {showManualInputModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowManualInputModal(false)}>
+          <div className="bg-white rounded-2xl w-full max-w-md p-6 space-y-4 shadow-xl" onClick={(e) => e.stopPropagation()}>
+            <div className="flex justify-between items-center mb-4">
+              <h3 className="text-xl font-bold text-slate-900">Ingreso Manual</h3>
+              <button onClick={() => setShowManualInputModal(false)} className="text-slate-400 hover:text-slate-600">
+                <X className="w-5 h-5"/>
+              </button>
+            </div>
+            
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Nombre del alimento *</label>
+                <input 
+                  type="text" 
+                  value={manualEntry.food_name} 
+                  onChange={e => setManualEntry({...manualEntry, food_name: e.target.value})}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-orange-500 focus:border-orange-500"
+                  placeholder="Ej. Manzana pequeña" 
+                />
+              </div>
+              
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Calorías (kcal)</label>
+                  <input 
+                    type="number" min="0" 
+                    value={manualEntry.calories || ''} 
+                    onChange={e => setManualEntry({...manualEntry, calories: parseInt(e.target.value) || 0})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Proteínas (g)</label>
+                  <input 
+                    type="number" min="0" 
+                    value={manualEntry.protein || ''} 
+                    onChange={e => setManualEntry({...manualEntry, protein: parseInt(e.target.value) || 0})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Carbohidratos (g)</label>
+                  <input 
+                    type="number" min="0" 
+                    value={manualEntry.carbs || ''} 
+                    onChange={e => setManualEntry({...manualEntry, carbs: parseInt(e.target.value) || 0})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg" 
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-1">Grasas (g)</label>
+                  <input 
+                    type="number" min="0" 
+                    value={manualEntry.fat || ''} 
+                    onChange={e => setManualEntry({...manualEntry, fat: parseInt(e.target.value) || 0})}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg" 
+                  />
+                </div>
+              </div>
+              
+              <Button onClick={handleManualSubmit} variant="primary" className="w-full mt-6">
+                <Check className="w-5 h-5 mr-2" /> Guardar Macro
               </Button>
             </div>
           </div>

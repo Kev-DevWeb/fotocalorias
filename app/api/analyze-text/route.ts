@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -115,18 +116,27 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
       return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
     }
 
-    let nutritionData;
+    // 6. Validación Fuerte con Zod
+    let validatedData;
     try {
-      nutritionData = JSON.parse(rawText);
-    } catch (e) {
-      console.error('Error parseando JSON:', rawText);
-      return NextResponse.json({ error: 'La IA no devolvió un JSON válido' }, { status: 500 });
+      const parsedData = JSON.parse(rawText);
+      if (parsedData.error) {
+        validatedData = { error: parsedData.error };
+      } else {
+        validatedData = nutritionDataSchema.parse(parsedData);
+      }
+    } catch (validationError: any) {
+      console.error('❌ Error de validación Zod o JSON parse:', validationError, rawText);
+      return NextResponse.json({ 
+        error: 'La IA devolvió datos inconsistentes.', 
+        details: validationError.errors || validationError.message 
+      }, { status: 500 });
     }
 
     // Añadir metadatos
-    nutritionData.model_used = usedModel;
+    (validatedData as any).model_used = usedModel;
 
-    return NextResponse.json(nutritionData, { status: 200 });
+    return NextResponse.json(validatedData, { status: 200 });
 
   } catch (error) {
     console.error('Server Error:', error);

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
@@ -49,7 +50,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Server config error: Missing API KEY' }, { status: 500 });
     }
 
-    const { image, mimeType } = await request.json();
+    const { image, mimeType, portionContext } = await request.json();
 
     if (!image || !mimeType) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) return NextResponse.json({ error: 'Formato no soportado' }, { status: 400 });
@@ -59,7 +60,11 @@ export async function POST(request: NextRequest) {
     if (imageSize > MAX_IMAGE_SIZE) return NextResponse.json({ error: 'Imagen muy grande' }, { status: 400 });
 
     // 2. Definir el Prompt
-    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON:
+    const contextInstruction = portionContext?.trim() 
+      ? `\nCONTEXTO DE LA PORCIÓN DADO POR EL USUARIO: "${portionContext}". DEBES ajustar estrictamente tus estimaciones de gramos y calorías en base a este contexto visual/textual (por ejemplo, si dice que es la mitad, divide los valores a la mitad; si dice plato grande, auméntalos proporcionalmente).\n` 
+      : "";
+
+    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON:${contextInstruction}
 {
   "food_name": "nombre descriptivo",
   "calories": número_entero,
@@ -106,20 +111,32 @@ Si no hay comida: {"error": "No se detectó comida"}`;
       return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
     }
 
-    // Como usamos responseMimeType: "application/json", el texto YA es JSON válido.
-    // No hace falta limpiar markdown.
+    // 6. Validación Fuerte con Zod
     let nutritionData;
+    let validatedData;
+    
     try {
       nutritionData = JSON.parse(rawText);
-    } catch (e) {
-      console.error('Error parseando JSON:', rawText);
-      return NextResponse.json({ error: 'La IA no devolvió un JSON válido' }, { status: 500 });
+      
+      // Si la IA directamente devolvió un error JSON (ej: no detectó comida)
+      if (nutritionData.error) {
+        validatedData = { error: nutritionData.error };
+      } else {
+        // Validar que TODOS los campos cumplen el esquema estricto (tipos, sin números negativos)
+        validatedData = nutritionDataSchema.parse(nutritionData);
+      }
+    } catch (validationError: any) {
+      console.error('❌ Error de validación Zod o JSON parse:', validationError, rawText);
+      return NextResponse.json({ 
+        error: 'La IA devolvió datos inconsistentes.',
+        details: validationError.errors || validationError.message 
+      }, { status: 500 });
     }
 
     // Añadir metadatos de qué modelo se usó (útil para depurar)
-    nutritionData.model_used = usedModel;
+    (validatedData as any).model_used = usedModel;
 
-    return NextResponse.json(nutritionData, { status: 200 });
+    return NextResponse.json(validatedData, { status: 200 });
 
   } catch (error) {
     console.error('Server Error:', error);

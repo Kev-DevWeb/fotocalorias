@@ -53,14 +53,14 @@ function calculateTDEE(bmr: number, activityLevel: ActivityLevel): number {
 }
 
 /**
- * Ajusta las calorías según el objetivo fitness
+ * Ajusta las calorías según el objetivo fitness (Basado en porcentajes para mejor escalabilidad)
  */
 function adjustCaloriesForGoal(tdee: number, goal: Goal): number {
   switch (goal) {
     case 'gain_muscle':
-      return tdee + 350; // Superávit moderado
+      return Math.round(tdee * 1.10); // Superávit del 10% (lean bulk: minimiza ganancia de grasa)
     case 'lose_fat':
-      return tdee - 400; // Déficit moderado
+      return Math.round(tdee * 0.80); // Déficit del 20% (agresivo pero seguro y que protege la masa muscular)
     case 'maintain':
       return tdee;
     default:
@@ -74,34 +74,46 @@ function adjustCaloriesForGoal(tdee: number, goal: Goal): number {
 function calculateMacros(
   targetCalories: number,
   weight: number,
+  height: number,
   goal: Goal
 ): { protein: number; fat: number; carbs: number } {
   let proteinGrams: number;
   let fatPercentage: number;
   
+  // Límite máximo de proteína recomendado (aprox. 1g por cm de altura para evitar consumos excesivos)
+  const maxProtein = height;
+  
   switch (goal) {
     case 'gain_muscle':
-      proteinGrams = weight * 2.2; // 2.2g/kg
+      proteinGrams = Math.min(weight * 2.2, maxProtein); // 2.2g/kg o límite
       fatPercentage = 0.27; // 27%
       break;
     case 'lose_fat':
-      proteinGrams = weight * 2.4; // 2.4g/kg para preservar músculo
+      proteinGrams = Math.min(weight * 2.4, maxProtein); // 2.4g/kg o límite
       fatPercentage = 0.23; // 23%
       break;
     case 'maintain':
-      proteinGrams = weight * 1.8; // 1.8g/kg
+      proteinGrams = Math.min(weight * 1.8, maxProtein); // 1.8g/kg o límite
       fatPercentage = 0.28; // 28%
       break;
     default:
-      proteinGrams = weight * 1.8;
+      proteinGrams = Math.min(weight * 1.8, maxProtein);
       fatPercentage = 0.28;
   }
   
   const proteinCalories = proteinGrams * 4; // 4 kcal/g
-  const fatCalories = targetCalories * fatPercentage;
-  const fatGrams = fatCalories / 9; // 9 kcal/g
+  let fatCalories = targetCalories * fatPercentage;
+  let fatGrams = fatCalories / 9; // 9 kcal/g
+  
+  // Mínimo 45g de grasa para mantener el entorno hormonal saludable
+  if (fatGrams < 45) {
+    fatGrams = 45;
+    fatCalories = fatGrams * 9;
+  }
+
   const carbCalories = targetCalories - proteinCalories - fatCalories;
-  const carbGrams = carbCalories / 4; // 4 kcal/g
+  // Prevenir que los carbohidratos se vuelvan negativos en dietas de muy bajas calorías
+  const carbGrams = Math.max(carbCalories / 4, 0); 
   
   return {
     protein: Math.round(proteinGrams),
@@ -124,7 +136,7 @@ export function calculateNutritionTargets(profile: UserProfile): MacroTargets {
   const targetCalories = adjustCaloriesForGoal(tdee, profile.goal);
   
   // 4. Calcular macros
-  const macros = calculateMacros(targetCalories, profile.weight, profile.goal);
+  const macros = calculateMacros(targetCalories, profile.weight, profile.height, profile.goal);
   
   return {
     calories: targetCalories,

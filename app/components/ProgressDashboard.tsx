@@ -2,60 +2,60 @@
 
 import React from 'react';
 import { DailyProgress } from '@/lib/calorie-calculator';
-import { Flame, Target, TrendingUp } from 'lucide-react';
+import { Flame, Target } from 'lucide-react';
 
 interface ProgressDashboardProps {
   progress: DailyProgress;
 }
 
-export default function ProgressDashboard({ progress }: ProgressDashboardProps) {
-  const MacroBar = ({ 
-    label, 
-    consumed, 
-    target, 
-    percentage, 
-    color,
-    icon
-  }: { 
-    label: string; 
-    consumed: number; 
-    target: number; 
-    percentage: number; 
-    color: string;
-    icon: string;
-  }) => {
-    const isComplete = percentage >= 100;
-    const isOverTarget = percentage > 100;
-    
-    return (
-      <div className="space-y-2">
-        <div className="flex justify-between items-center">
-          <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
-            <span>{icon}</span>
-            {label}
-          </span>
-          <span className={`text-sm font-semibold ${isOverTarget ? 'text-red-600' : 'text-gray-600'}`}>
-            {consumed} / {target}g {isComplete && !isOverTarget && '✓'}
-          </span>
+const MacroBar = ({ 
+  label, 
+  consumed, 
+  target, 
+  percentage, 
+  color,
+  icon
+}: { 
+  label: string; 
+  consumed: number; 
+  target: number; 
+  percentage: number; 
+  color: string;
+  icon: string;
+}) => {
+  const isComplete = percentage >= 100;
+  const isOverTarget = percentage > 100;
+  
+  return (
+    <div className="space-y-2">
+      <div className="flex justify-between items-center">
+        <span className="text-sm font-medium text-gray-700 flex items-center gap-1">
+          <span>{icon}</span>
+          {label}
+        </span>
+        <span className={`text-sm font-semibold ${isOverTarget ? 'text-red-600' : 'text-gray-600'}`}>
+          {consumed} / {target}g {isComplete && !isOverTarget && '✓'}
+        </span>
+      </div>
+      <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
+        <div
+          className={`h-full rounded-full transition-all duration-500 ${color} ${isComplete && !isOverTarget ? 'animate-pulse' : ''}`}
+          style={{ width: `${Math.min(percentage, 100)}%` }}
+        />
+      </div>
+      <div className="flex justify-between items-center">
+        <div className={`text-xs font-medium ${isOverTarget ? 'text-red-500' : 'text-gray-500'}`}>
+          {isOverTarget ? `+${Math.round((consumed - target) * 10) / 10}g sobre el objetivo` : `${Math.round((target - consumed) * 10) / 10}g restantes`}
         </div>
-        <div className="w-full bg-gray-200 rounded-full h-3 overflow-hidden">
-          <div
-            className={`h-full rounded-full transition-all duration-500 ${color} ${isComplete && !isOverTarget ? 'animate-pulse' : ''}`}
-            style={{ width: `${Math.min(percentage, 100)}%` }}
-          />
-        </div>
-        <div className="flex justify-between items-center">
-          <div className={`text-xs font-medium ${isOverTarget ? 'text-red-500' : 'text-gray-500'}`}>
-            {isOverTarget ? `+${Math.round((consumed - target) * 10) / 10}g sobre el objetivo` : `${Math.round((target - consumed) * 10) / 10}g restantes`}
-          </div>
-          <div className={`text-xs font-bold ${isOverTarget ? 'text-red-600' : 'text-gray-600'}`}>
-            {percentage}%
-          </div>
+        <div className={`text-xs font-bold ${isOverTarget ? 'text-red-600' : 'text-gray-600'}`}>
+          {percentage}%
         </div>
       </div>
-    );
-  };
+    </div>
+  );
+};
 
+export default function ProgressDashboard({ progress }: ProgressDashboardProps) {
   const caloriesIsOver = progress.calories.percentage > 100;
   const caloriesRemaining = progress.calories.remaining;
 

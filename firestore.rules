@@ -23,15 +23,15 @@ service cloud.firestore {
       // Solo el dueño puede leer sus logs
       allow read: if request.auth != null && request.auth.uid == userId;
       
-      // Solo el dueño puede crear logs
+      // Solo el dueño puede crear logs (con validación de tipos)
       allow create: if request.auth != null 
                     && request.auth.uid == userId
                     && request.resource.data.keys().hasAll(['food_name', 'calories', 'protein', 'carbs', 'fat', 'createdAt'])
                     && request.resource.data.food_name is string
-                    && request.resource.data.calories is number
-                    && request.resource.data.protein is number
-                    && request.resource.data.carbs is number
-                    && request.resource.data.fat is number;
+                    && request.resource.data.calories is number && request.resource.data.calories >= 0
+                    && request.resource.data.protein is number && request.resource.data.protein >= 0
+                    && request.resource.data.carbs is number && request.resource.data.carbs >= 0
+                    && request.resource.data.fat is number && request.resource.data.fat >= 0;
       
       // Solo el dueño puede actualizar o eliminar sus logs
       allow update, delete: if request.auth != null && request.auth.uid == userId;
