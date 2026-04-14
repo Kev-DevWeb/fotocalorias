@@ -4,13 +4,10 @@ import { nutritionDataSchema } from '@/lib/schemas';
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // EL NUEVO ESTÁNDAR (Más rápido y gratuito en el nivel base)
-const MODEL_FLASH = 'gemini-2.5-flash'; 
+const MODEL_FLASH = 'gemini-3.0-flash'; 
 
 // EL NUEVO MODELO "PRO" (Inteligente)
-const MODEL_PRO = 'gemini-2.5-pro';
-
-// O si quieres probar lo más nuevo que salió esta semana:
-// const MODEL_PRO = 'gemini-3.0-pro';// Modelo de respaldo rápido
+const MODEL_PRO = 'gemini-3.0-pro';
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -64,7 +61,7 @@ export async function POST(request: NextRequest) {
       ? `\nCONTEXTO DE LA PORCIÓN DADO POR EL USUARIO: "${portionContext}". DEBES ajustar estrictamente tus estimaciones de gramos y calorías en base a este contexto visual/textual (por ejemplo, si dice que es la mitad, divide los valores a la mitad; si dice plato grande, auméntalos proporcionalmente).\n` 
       : "";
 
-    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON:${contextInstruction}
+    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en formato de texto puro sin bloques markdown (NO uses \`\`\`json):${contextInstruction}
 {
   "food_name": "nombre descriptivo",
   "calories": número_entero,
@@ -111,12 +108,14 @@ Si no hay comida: {"error": "No se detectó comida"}`;
       return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
     }
 
-    // 6. Validación Fuerte con Zod
+    // 6. Limpieza y Validación Fuerte con Zod
     let nutritionData;
     let validatedData;
     
     try {
-      nutritionData = JSON.parse(rawText);
+      // Remover bloques de código Markdown que la IA a veces incluye por error
+      const cleanedText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      nutritionData = JSON.parse(cleanedText);
       
       // Si la IA directamente devolvió un error JSON (ej: no detectó comida)
       if (nutritionData.error) {

@@ -3,8 +3,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_FLASH = 'gemini-2.5-flash';
-const MODEL_PRO = 'gemini-2.5-pro';
+const MODEL_FLASH = 'gemini-3.0-flash';
+const MODEL_PRO = 'gemini-3.0-pro';
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +32,7 @@ export async function POST(request: NextRequest) {
 
 Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones.
 
-Devuelve SOLO este JSON:
+Devuelve SOLO este JSON en formato de texto puro sin bloques markdown (NO uses \`\`\`json):
 {
   "food_name": "nombre descriptivo",
   "calories": número_entero,
@@ -116,10 +116,13 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
       return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
     }
 
-    // 6. Validación Fuerte con Zod
+    // 6. Limpieza y Validación Fuerte con Zod
     let validatedData;
     try {
-      const parsedData = JSON.parse(rawText);
+      // Remover bloques Markdown que a veces Gemini envía (```json ... ```)
+      const cleanedText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      const parsedData = JSON.parse(cleanedText);
+      
       if (parsedData.error) {
         validatedData = { error: parsedData.error };
       } else {
