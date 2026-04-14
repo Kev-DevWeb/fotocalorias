@@ -3,11 +3,9 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// EL NUEVO ESTÁNDAR (Más rápido y gratuito en el nivel base)
+// Usamos los modelos soportados actualmente por la API
 const MODEL_FLASH = 'gemini-2.5-flash'; 
-
-// EL NUEVO MODELO "PRO" (Inteligente)
-const MODEL_PRO = 'gemini-2.5-pro';
+const MODEL_PRO = 'gemini-2.5-flash'; // Forzamos Flash en ambos por estabilidad de cuota
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -63,17 +61,17 @@ export async function POST(request: NextRequest) {
 
     const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en formato de texto puro sin bloques markdown (NO uses \`\`\`json):${contextInstruction}
 {
-  "food_name": "nombre descriptivo",
-  "calories": número_entero,
-  "protein": gramos,
-  "carbs": gramos,
-  "fat": gramos,
-  "sugar": gramos,
-  "fiber": gramos,
-  "sodium": miligramos,
-  "confidence": "Alta|Media|Baja",
-  "detected_items": ["item1","item2"],
-  "portion_note": "descripción breve"
+  "food_name": "Nombre descriptivo de la comida",
+  "calories": 250,
+  "protein": 15.5,
+  "carbs": 30.2,
+  "fat": 10.5,
+  "sugar": 5.0,
+  "fiber": 2.5,
+  "sodium": 300,
+  "confidence": "Alta",
+  "detected_items": ["ingrediente1", "ingrediente2"],
+  "portion_note": "descripción de la porción"
 }
 Si no hay comida: {"error": "No se detectó comida"}`;
 
@@ -113,8 +111,12 @@ Si no hay comida: {"error": "No se detectó comida"}`;
     let validatedData;
     
     try {
-      // Remover bloques de código Markdown que la IA a veces incluye por error
-      const cleanedText = rawText.replace(/```json/gi, '').replace(/```/g, '').trim();
+      // 1. Extraer todo lo que esté entre la primera llave { y la última llave }
+      // Esto previene que mensajes como "Claro, aquí tienes los resultados: {..." rompan el parseo
+      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+      let cleanedText = jsonMatch ? jsonMatch[0] : rawText;
+      
+      // 2. Parsear el JSON
       nutritionData = JSON.parse(cleanedText);
       
       // Si la IA directamente devolvió un error JSON (ej: no detectó comida)
