@@ -3,8 +3,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_FLASH = 'gemini-3.0-flash';
-const MODEL_PRO = 'gemini-3.0-pro';
+const MODEL_FLASH = 'gemini-2.5-flash';
+const MODEL_PRO = 'gemini-2.5-pro';
 
 export async function POST(request: NextRequest) {
   try {

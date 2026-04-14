@@ -4,10 +4,10 @@ import { nutritionDataSchema } from '@/lib/schemas';
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // EL NUEVO ESTÁNDAR (Más rápido y gratuito en el nivel base)
-const MODEL_FLASH = 'gemini-3.0-flash'; 
+const MODEL_FLASH = 'gemini-2.5-flash'; 
 
 // EL NUEVO MODELO "PRO" (Inteligente)
-const MODEL_PRO = 'gemini-3.0-pro';
+const MODEL_PRO = 'gemini-2.5-pro';
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
