@@ -1,11 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { extractJsonFromGemini } from '@/lib/gemini';
 import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 // Usamos los modelos soportados actualmente por la API
-const MODEL_FLASH = 'gemini-2.5-flash'; 
-const MODEL_PRO = 'gemini-2.5-flash'; // Forzamos Flash en ambos por estabilidad de cuota
+const MODEL_FLASH = 'gemini-2.5-flash';
+const MODEL_PRO = 'gemini-2.5-pro';
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -50,7 +51,7 @@ export async function POST(request: NextRequest) {
     if (!image || !mimeType) return NextResponse.json({ error: 'Faltan datos' }, { status: 400 });
     if (!ALLOWED_MIME_TYPES.includes(mimeType)) return NextResponse.json({ error: 'Formato no soportado' }, { status: 400 });
     
-    // Validación de tamaño básica (opcionalmente podrías quitar el Buffer si usas runtime edge estricto, pero suele funcionar)
+    // Validación de tamaño básica
     const imageSize = Math.ceil((image.length * 3) / 4); // Estimación rápida de tamaño base64
     if (imageSize > MAX_IMAGE_SIZE) return NextResponse.json({ error: 'Imagen muy grande' }, { status: 400 });
 
@@ -59,7 +60,7 @@ export async function POST(request: NextRequest) {
       ? `\nCONTEXTO DE LA PORCIÓN DADO POR EL USUARIO: "${portionContext}". DEBES ajustar estrictamente tus estimaciones de gramos y calorías en base a este contexto visual/textual (por ejemplo, si dice que es la mitad, divide los valores a la mitad; si dice plato grande, auméntalos proporcionalmente).\n` 
       : "";
 
-    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en formato de texto puro sin bloques markdown (NO uses \`\`\`json):${contextInstruction}
+    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en texto plano (sin markdown, sin explicaciones):${contextInstruction}
 {
   "food_name": "Nombre descriptivo de la comida",
   "calories": 250,
@@ -111,13 +112,14 @@ Si no hay comida: {"error": "No se detectó comida"}`;
     let validatedData;
     
     try {
-      // 1. Extraer todo lo que esté entre la primera llave { y la última llave }
-      // Esto previene que mensajes como "Claro, aquí tienes los resultados: {..." rompan el parseo
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      let cleanedText = jsonMatch ? jsonMatch[0] : rawText;
-      
+      // 1. Extraer el primer bloque JSON válido (fenced o balanceado)
+      const extractedJson = extractJsonFromGemini(rawText);
+      if (!extractedJson) {
+        throw new Error('No se encontró un JSON válido en la respuesta.');
+      }
+
       // 2. Parsear el JSON
-      nutritionData = JSON.parse(cleanedText);
+      nutritionData = JSON.parse(extractedJson);
       
       // Si la IA directamente devolvió un error JSON (ej: no detectó comida)
       if (nutritionData.error) {
@@ -145,5 +147,5 @@ Si no hay comida: {"error": "No se detectó comida"}`;
   }
 }
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const maxDuration = 30;
