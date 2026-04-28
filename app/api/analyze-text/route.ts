@@ -1,10 +1,32 @@
 import { NextRequest, NextResponse } from 'next/server';
+import { extractJsonFromGemini } from '@/lib/gemini';
 import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos usando la línea activa soportada
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL_FLASH = 'gemini-2.5-flash';
-const MODEL_PRO = 'gemini-2.5-flash';
+const MODEL_PRO = 'gemini-2.5-pro';
+
+async function callGeminiAPI(model: string, promptText: string) {
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+
+  return fetch(url, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      contents: [{
+        parts: [{ text: promptText }]
+      }],
+      generationConfig: {
+        temperature: 0.4,
+        topK: 32,
+        topP: 1,
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json"
+      }
+    })
+  });
+}
 
 export async function POST(request: NextRequest) {
   try {
@@ -32,7 +54,7 @@ export async function POST(request: NextRequest) {
 
 Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones.
 
-Devuelve SOLO este JSON válido, usando comillas dobles para TODAS las propiedades y valores de texto:
+Devuelve SOLO este JSON válido en texto plano (sin markdown ni explicaciones), usando comillas dobles para TODAS las propiedades y valores de texto:
 {
   "food_name": "Nombre descriptivo de la comida",
   "calories": 250,
@@ -51,48 +73,14 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
 
     // 3. INTENTO 1: Usar Gemini Pro
     console.log('🤖 Analizando texto con Gemini Pro...');
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_PRO}:generateContent?key=${GEMINI_API_KEY}`;
-
-    let response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{
-          parts: [{ text: prompt }]
-        }],
-        generationConfig: {
-          temperature: 0.4,
-          topK: 32,
-          topP: 1,
-          maxOutputTokens: 2048,
-          responseMimeType: "application/json"
-        }
-      })
-    });
+    let response = await callGeminiAPI(MODEL_PRO, prompt);
 
     let usedModel = MODEL_PRO;
 
     // 4. Lógica de Fallback (Si Pro falla por cuota 429, usar Flash)
     if (response.status === 429) {
       console.warn('⚠️ Cuota de Pro excedida (429). Cambiando a Flash ⚡...');
-      const urlFlash = `https://generativelanguage.googleapis.com/v1beta/models/${MODEL_FLASH}:generateContent?key=${GEMINI_API_KEY}`;
-      
-      response = await fetch(urlFlash, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          contents: [{
-            parts: [{ text: prompt }]
-          }],
-          generationConfig: {
-            temperature: 0.4,
-            topK: 32,
-            topP: 1,
-            maxOutputTokens: 2048,
-            responseMimeType: "application/json"
-          }
-        })
-      });
+      response = await callGeminiAPI(MODEL_FLASH, prompt);
       
       usedModel = MODEL_FLASH;
     }
@@ -122,12 +110,14 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
       // 1. A veces Gemini escribe las propiedades o los valores sin comillas (como objeto JS en lugar de JSON).
       // Esta limpieza extra soluciona comillas simples o problemas sintácticos leves
       
-      const jsonMatch = rawText.match(/\{[\s\S]*\}/);
-      let cleanedText = jsonMatch ? jsonMatch[0] : rawText;
-      
+      const extractedJson = extractJsonFromGemini(rawText);
+      if (!extractedJson) {
+        throw new Error('No se encontró un JSON válido en la respuesta.');
+      }
+
       // Reemplaza comillas simples por dobles (si las usó por error)
-      cleanedText = cleanedText.replace(/'/g, '"');
-      
+      const cleanedText = extractedJson.replace(/'/g, '"');
+
       // 2. Parsear el JSON
       const parsedData = JSON.parse(cleanedText);
       
@@ -155,5 +145,5 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
   }
 }
 
-export const runtime = 'edge';
+export const runtime = 'nodejs';
 export const maxDuration = 30;

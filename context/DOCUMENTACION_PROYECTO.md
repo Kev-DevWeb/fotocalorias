@@ -174,7 +174,7 @@ El sistema utiliza un prompt estructurado que:
 3. Especifica los campos requeridos
 4. Maneja casos de error (no comida detectada)
 
-**Modelo utilizado**: `gemini-2.5-flash-preview-09-2025`
+**Modelos utilizados**: `gemini-2.5-pro` con fallback a `gemini-2.5-flash`
 
 ---
 
