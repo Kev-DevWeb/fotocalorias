@@ -115,11 +115,8 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
         throw new Error('No se encontró un JSON válido en la respuesta.');
       }
 
-      // Reemplaza comillas simples por dobles (si las usó por error)
-      const cleanedText = extractedJson.replace(/'/g, '"');
-
-      // 2. Parsear el JSON
-      const parsedData = JSON.parse(cleanedText);
+      // 2. Parsear el JSON (extractJsonFromGemini ya garantiza JSON válido)
+      const parsedData = JSON.parse(extractedJson);
       
       if (parsedData.error) {
         validatedData = { error: parsedData.error };
