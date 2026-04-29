@@ -60,8 +60,9 @@ export function extractJsonFromGemini(rawText: string): string | null {
               JSON.parse(candidate);
               return candidate;
             } catch {
-              // not valid JSON – advance past this closing char and try again
-              from = i + 1;
+              // not valid JSON – advance just past the opening delimiter so
+              // nested { / [ inside this rejected region are still considered
+              from = startIndex + 1;
               continue outer;
             }
           }
