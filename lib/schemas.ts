@@ -14,7 +14,9 @@ export const nutritionDataSchema = z.object({
   detected_items: z.array(z.string()).optional(),
   portion_note: z.string().optional(),
   error: z.string().optional(),
-  model_used: z.string().optional()
+  model_used: z.string().optional(),
+  nova_group: z.coerce.number().min(1).max(4).optional(),
+  nova_reason: z.string().optional()
 });
 
 // Tipo TypeScript inferido automáticamente desde el esquema de Zod

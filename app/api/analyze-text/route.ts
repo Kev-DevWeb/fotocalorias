@@ -4,8 +4,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos usando la línea activa soportada
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_FLASH = 'gemini-2.5-flash';
-const MODEL_PRO = 'gemini-2.5-pro';
+const MODEL_PRIMARY = 'gemini-3.5-flash';
+const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 
 async function callGeminiAPI(model: string, promptText: string) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -18,11 +18,34 @@ async function callGeminiAPI(model: string, promptText: string) {
         parts: [{ text: promptText }]
       }],
       generationConfig: {
-        temperature: 0.4,
+        temperature: 0.2,
         topK: 32,
         topP: 1,
         maxOutputTokens: 2048,
-        responseMimeType: "application/json"
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            food_name: { type: "STRING" },
+            calories: { type: "NUMBER" },
+            protein: { type: "NUMBER" },
+            carbs: { type: "NUMBER" },
+            fat: { type: "NUMBER" },
+            sugar: { type: "NUMBER" },
+            fiber: { type: "NUMBER" },
+            sodium: { type: "NUMBER" },
+            confidence: { type: "STRING" },
+            detected_items: { 
+              type: "ARRAY", 
+              items: { type: "STRING" } 
+            },
+            portion_note: { type: "STRING" },
+            nova_group: { type: "INTEGER" },
+            nova_reason: { type: "STRING" },
+            error: { type: "STRING" }
+          },
+          required: ["food_name", "calories", "protein", "carbs", "fat"]
+        }
       }
     })
   });
@@ -49,7 +72,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Descripción muy larga (máximo 500 caracteres)' }, { status: 400 });
     }
 
-    // 2. Definir el Prompt
     const prompt = `Eres un nutricionista experto. Analiza esta descripción de comida: "${description}"
 
 Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones.
@@ -66,23 +88,25 @@ Devuelve SOLO este JSON válido en texto plano (sin markdown ni explicaciones), 
   "sodium": 300,
   "confidence": "Alta",
   "detected_items": ["ingrediente1", "ingrediente2"],
-  "portion_note": "descripción de la porción estimada"
+  "portion_note": "descripción de la porción estimada",
+  "nova_group": 1,
+  "nova_reason": "Breve explicación en español del grupo NOVA asignado (1: Mínimamente procesado, 2: Ingrediente culinario procesado, 3: Procesado, 4: Ultraprocesado)"
 }
 
 Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún alimento"}`;
 
-    // 3. INTENTO 1: Usar Gemini Pro
-    console.log('🤖 Analizando texto con Gemini Pro...');
-    let response = await callGeminiAPI(MODEL_PRO, prompt);
+    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash)
+    console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
+    let response = await callGeminiAPI(MODEL_PRIMARY, prompt);
 
-    let usedModel = MODEL_PRO;
+    let usedModel = MODEL_PRIMARY;
 
-    // 4. Lógica de Fallback (Si Pro falla por cuota 429, usar Flash)
+    // 4. Lógica de Fallback (Si falla por cuota 429, usar modelo secundario gemini-3.1-flash-lite)
     if (response.status === 429) {
-      console.warn('⚠️ Cuota de Pro excedida (429). Cambiando a Flash ⚡...');
-      response = await callGeminiAPI(MODEL_FLASH, prompt);
+      console.warn(`⚠️ Cuota de ${MODEL_PRIMARY} excedida (429). Cambiando a ${MODEL_FALLBACK} ⚡...`);
+      response = await callGeminiAPI(MODEL_FALLBACK, prompt);
       
-      usedModel = MODEL_FLASH;
+      usedModel = MODEL_FALLBACK;
     }
 
     // Manejo de otros errores

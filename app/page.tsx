@@ -25,9 +25,11 @@ import {
   setDoc,
   query,
   orderBy,
-  where
+  where,
+  updateDoc,
+  deleteField
 } from 'firebase/firestore';
-import { Camera, Check, Trash2, Loader2, Pizza, LogOut, Settings, X, ChevronLeft, ChevronRight, Calendar } from 'lucide-react';
+import { Camera, Check, Trash2, Loader2, Pizza, LogOut, Settings, X, ChevronLeft, ChevronRight, Calendar, Droplet, Activity } from 'lucide-react';
 import { UserProfile, MacroTargets, calculateDailyProgress } from '@/lib/calorie-calculator';
 import AuthForm from './components/AuthForm';
 import ProfileSetup from './components/ProfileSetup';
@@ -36,12 +38,12 @@ import imageCompression from 'browser-image-compression';
 
 // --- CONFIGURACIÓN FIREBASE ---
 const firebaseConfig = {
-  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY || "TU_API_KEY_AQUI",
-  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN || "TU_PROYECTO.firebaseapp.com",
-  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID || "TU_PROYECTO",
-  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET || "TU_PROYECTO.firebasestorage.app",
-  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID || "...",
-  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID || "..."
+  apiKey: process.env.NEXT_PUBLIC_FIREBASE_API_KEY,
+  authDomain: process.env.NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN,
+  projectId: process.env.NEXT_PUBLIC_FIREBASE_PROJECT_ID,
+  storageBucket: process.env.NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET,
+  messagingSenderId: process.env.NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID,
+  appId: process.env.NEXT_PUBLIC_FIREBASE_APP_ID
 };
 
 // Inicialización segura para Next.js
@@ -78,12 +80,15 @@ interface NutritionData {
   detected_items?: string[];
   portion_note?: string;
   error?: string;
+  nova_group?: number;
+  nova_reason?: string;
 }
 
 interface CalorieLog extends NutritionData {
   id: string;
   createdAt: any;
   imagePreview?: string;
+  meal_type?: 'desayuno' | 'almuerzo' | 'cena' | 'snack';
 }
 
 interface UserData {
@@ -93,6 +98,11 @@ interface UserData {
   targets?: MacroTargets;
   createdAt: any;
   updatedAt: any;
+  googleFitTokens?: {
+    accessToken: string;
+    refreshToken: string;
+    expiresAt: number;
+  };
 }
 
 // --- FUNCIÓN PARA ANALIZAR IMAGEN ---
@@ -246,6 +256,38 @@ const Button = ({
   );
 };
 
+// --- FUNCIÓN HELPER PARA OBTENER EMOJI DE COMIDA ---
+function getFoodEmoji(foodName: string): string {
+  if (!foodName) return '🍽️';
+  const name = foodName.toLowerCase();
+  if (name.includes('ensalada') || name.includes('salad') || name.includes('verdura') || name.includes('vegetal') || name.includes('brocoli') || name.includes('brócoli')) return '🥗';
+  if (name.includes('carne') || name.includes('pollo') || name.includes('res') || name.includes('puerco') || name.includes('cerdo') || name.includes('steak') || name.includes('pechuga')) return '🍗';
+  if (name.includes('pescado') || name.includes('fish') || name.includes('salmon') || name.includes('salmón') || name.includes('atun') || name.includes('atún') || name.includes('marisco')) return '🐟';
+  if (name.includes('huevo') || name.includes('egg') || name.includes('omelet')) return '🍳';
+  if (name.includes('fruta') || name.includes('manzana') || name.includes('platano') || name.includes('plátano') || name.includes('fresa') || name.includes('banana') || name.includes('naranja')) return '🍎';
+  if (name.includes('agua') || name.includes('drink') || name.includes('jugo') || name.includes('refresco') || name.includes('bebida') || name.includes('licuado') || name.includes('café') || name.includes('cafe') || name.includes('té') || name.includes('te')) return '🥤';
+  if (name.includes('arroz') || name.includes('rice') || name.includes('sushi')) return '🍚';
+  if (name.includes('pan') || name.includes('bread') || name.includes('cereal') || name.includes('avena') || name.includes('galleta') || name.includes('toast')) return '🍞';
+  if (name.includes('pizza')) return '🍕';
+  if (name.includes('taco') || name.includes('quesadilla') || name.includes('burrito') || name.includes('fajita')) return '🌮';
+  if (name.includes('hamburguesa') || name.includes('burger')) return '🍔';
+  if (name.includes('postre') || name.includes('pastel') || name.includes('chocolate') || name.includes('dulce') || name.includes('helado') || name.includes('flan')) return '🍩';
+  if (name.includes('pasta') || name.includes('espagueti') || name.includes('spaghetti') || name.includes('tallarines')) return '🍝';
+  if (name.includes('sopa') || name.includes('caldo') || name.includes('ramen')) return '🍜';
+  if (name.includes('queso') || name.includes('cheese')) return '🧀';
+  if (name.includes('leche') || name.includes('yogur') || name.includes('yogurt') || name.includes('milk')) return '🥛';
+  if (name.includes('nuez') || name.includes('nueces') || name.includes('almendra') || name.includes('cacahuate') || name.includes('maní')) return '🥜';
+  return '🍽️';
+}
+
+function getDefaultMealType(): 'desayuno' | 'almuerzo' | 'cena' | 'snack' {
+  const hour = new Date().getHours();
+  if (hour >= 5 && hour < 12) return 'desayuno';
+  if (hour >= 12 && hour < 18) return 'almuerzo';
+  if (hour >= 18 && hour < 24) return 'cena';
+  return 'snack';
+}
+
 // --- PÁGINA PRINCIPAL ---
 export default function Home() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
@@ -283,6 +325,16 @@ export default function Home() {
   const [showGuestTextInputModal, setShowGuestTextInputModal] = useState(false);
   const [foodDescription, setFoodDescription] = useState('');
   const [isAnalyzingText, setIsAnalyzingText] = useState(false);
+
+  // Estados de Pacing de comidas e Hidratación
+  const [selectedMealType, setSelectedMealType] = useState<'desayuno' | 'almuerzo' | 'cena' | 'snack'>('desayuno');
+  const [guestSelectedMealType, setGuestSelectedMealType] = useState<'desayuno' | 'almuerzo' | 'cena' | 'snack'>('desayuno');
+  const [waterIntake, setWaterIntake] = useState<number>(0);
+  const [guestWaterIntake, setGuestWaterIntake] = useState<number>(0);
+
+  // Estados de Google Fit
+  const [caloriesBurned, setCaloriesBurned] = useState<number>(0);
+  const [isSyncingFit, setIsSyncingFit] = useState(false);
 
   // Estados para entrada manual (cuando la IA falla o se acaban los tokens)
   const [showManualInputModal, setShowManualInputModal] = useState(false);
@@ -400,6 +452,403 @@ export default function Home() {
     return () => unsubscribe();
   }, [user, selectedDate]);
 
+  // Cargar logs de hidratación
+  useEffect(() => {
+    if (!user) {
+      setWaterIntake(0);
+      return;
+    }
+
+    const dateString = selectedDate.toISOString().split('T')[0];
+    console.log('💧 Configurando listener para hidratación:', dateString);
+    const hydrationDocRef = doc(db, 'users', user.uid, 'hydration_logs', dateString);
+    
+    const unsubscribe = onSnapshot(hydrationDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setWaterIntake(data.amount || 0);
+      } else {
+        setWaterIntake(0);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user, selectedDate]);
+
+  // Actualizar categoría por defecto de comida cuando se abre un análisis
+  useEffect(() => {
+    if (previewImage) {
+      setSelectedMealType(getDefaultMealType());
+    }
+  }, [previewImage]);
+
+  useEffect(() => {
+    if (guestPreviewImage || guestAnalysisResult) {
+      setGuestSelectedMealType(getDefaultMealType());
+    }
+  }, [guestPreviewImage, guestAnalysisResult]);
+
+  const hydrationTarget = userData?.profile?.weight 
+    ? Math.round(userData.profile.weight * 35) 
+    : 2000;
+
+  const renderHydrationCard = (isGuest: boolean) => {
+    const currentWater = isGuest ? guestWaterIntake : waterIntake;
+    const target = hydrationTarget;
+    const pct = target > 0 ? Math.round((currentWater / target) * 100) : 0;
+    
+    return (
+      <Card className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <div className="bg-blue-500/10 p-2 rounded-lg">
+              <Droplet className="w-5 h-5 text-blue-500 fill-blue-500" />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm">Registro de Hidratación</h3>
+              <p className="text-[11px] text-slate-500">Mantén tu cuerpo activo e hidratado</p>
+            </div>
+          </div>
+          <div className="text-right">
+            <span className="text-lg font-bold text-slate-800">{currentWater}</span>
+            <span className="text-xs text-slate-500"> / {target} ml</span>
+          </div>
+        </div>
+
+        {/* Barra de progreso */}
+        <div className="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+          <div 
+            className="h-full bg-blue-500 rounded-full transition-all duration-500"
+            style={{ width: `${Math.min(pct, 100)}%` }}
+          />
+        </div>
+
+        <div className="flex justify-between items-center gap-2 flex-wrap">
+          <div className="text-xs font-bold text-blue-600">
+            {currentWater >= target ? '💧 ¡Meta cumplida! ¡Buen trabajo!' : `${Math.max(0, target - currentWater)} ml restantes`}
+          </div>
+          
+          <div className="flex gap-1">
+            <button 
+              onClick={() => updateHydration(-250)}
+              className="px-2 py-1 border border-slate-200 text-slate-500 text-[10px] font-bold rounded hover:bg-slate-50 transition-colors"
+              title="Restar 250ml"
+            >
+              -250
+            </button>
+            <button 
+              onClick={() => updateHydration(250)}
+              className="px-2.5 py-1 bg-blue-50 text-blue-600 text-[10px] font-bold rounded hover:bg-blue-100 transition-colors"
+            >
+              +250 ml 🥛
+            </button>
+            <button 
+              onClick={() => updateHydration(500)}
+              className="px-2.5 py-1 bg-blue-500 text-white text-[10px] font-bold rounded hover:bg-blue-600 transition-colors shadow-sm shadow-blue-200"
+            >
+              +500 ml 🥤
+            </button>
+          </div>
+        </div>
+      </Card>
+    );
+  };
+
+  // --- GOOGLE FIT INTEGRATION ---
+
+  // Escuchar mensajes del popup de Google Fit
+  useEffect(() => {
+    const handleAuthMessage = async (event: MessageEvent) => {
+      if (event.origin !== window.location.origin) return;
+
+      if (event.data?.type === 'GOOGLE_FIT_AUTH_SUCCESS') {
+        const tokens = event.data.tokens;
+        console.log('🔑 Tokens de Google Fit recibidos:', tokens);
+        if (user) {
+          const userDocRef = doc(db, 'users', user.uid);
+          try {
+            await updateDoc(userDocRef, {
+              googleFitTokens: tokens,
+              updatedAt: serverTimestamp()
+            });
+            alert('¡Google Fit conectado exitosamente!');
+            syncGoogleFit(selectedDate, tokens);
+          } catch (err) {
+            console.error('Error al guardar tokens de Google Fit:', err);
+            alert('Error al guardar la conexión con Google Fit.');
+          }
+        }
+      } else if (event.data?.type === 'GOOGLE_FIT_AUTH_ERROR') {
+        console.error('❌ Error de Google Fit Auth:', event.data.error);
+        alert(`Error al conectar con Google Fit: ${event.data.error}`);
+      }
+    };
+
+    window.addEventListener('message', handleAuthMessage);
+    return () => window.removeEventListener('message', handleAuthMessage);
+  }, [user, selectedDate, userData?.googleFitTokens]);
+
+  // Cargar logs de actividad (Google Fit) de Firestore
+  useEffect(() => {
+    if (!user) {
+      setCaloriesBurned(0);
+      return;
+    }
+
+    const dateString = selectedDate.toISOString().split('T')[0];
+    console.log('🔥 Configurando listener para actividad (Google Fit):', dateString);
+    const activityDocRef = doc(db, 'users', user.uid, 'activity_logs', dateString);
+    
+    const unsubscribe = onSnapshot(activityDocRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        setCaloriesBurned(data.caloriesBurned || 0);
+      } else {
+        setCaloriesBurned(0);
+      }
+    });
+
+    return () => unsubscribe();
+  }, [user, selectedDate]);
+
+  // Obtener un access token válido, refrescándolo de ser necesario
+  const getValidAccessToken = async (tokens: { accessToken: string; refreshToken: string; expiresAt: number }) => {
+    if (Date.now() < tokens.expiresAt - 60000) {
+      return tokens.accessToken;
+    }
+
+    console.log('🔄 Token de Google Fit expirado o por expirar. Refrescando...');
+    try {
+      const response = await fetch('/api/auth/google-fit/refresh', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ refreshToken: tokens.refreshToken })
+      });
+
+      if (!response.ok) {
+        throw new Error('Error al llamar al endpoint de refresco');
+      }
+
+      const data = await response.json();
+      if (data.error) {
+        throw new Error(data.error);
+      }
+
+      // Guardar nuevos tokens en Firestore
+      if (user) {
+        const userDocRef = doc(db, 'users', user.uid);
+        await updateDoc(userDocRef, {
+          'googleFitTokens.accessToken': data.accessToken,
+          'googleFitTokens.expiresAt': data.expiresAt,
+          updatedAt: serverTimestamp()
+        });
+      }
+
+      return data.accessToken;
+    } catch (err) {
+      console.error('❌ Error al refrescar token de Google Fit:', err);
+      throw err;
+    }
+  };
+
+  // Sincronizar calorías quemadas desde la API de Google Fit
+  const syncGoogleFit = async (date: Date, tokens: { accessToken: string; refreshToken: string; expiresAt: number }) => {
+    if (!user) return;
+    setIsSyncingFit(true);
+    try {
+      const validToken = await getValidAccessToken(tokens);
+      
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+
+      const startTimeMillis = startOfDay.getTime();
+      const endTimeMillis = endOfDay.getTime();
+
+      const response = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${validToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          aggregateBy: [
+            {
+              dataSourceId: "derived:com.google.calories.expended:com.google.android.gms:from_activities"
+            }
+          ],
+          bucketByTime: {
+            durationMillis: 86400000 // 24 horas
+          },
+          startTimeMillis,
+          endTimeMillis
+        })
+      });
+
+      if (!response.ok) {
+        throw new Error(`Error HTTP: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      let totalCalories = 0;
+      if (data.bucket) {
+        for (const bucket of data.bucket) {
+          if (bucket.dataset) {
+            for (const dataset of bucket.dataset) {
+              if (dataset.point) {
+                for (const point of dataset.point) {
+                  if (point.value) {
+                    for (const val of point.value) {
+                      if (typeof val.fpVal === 'number') {
+                        totalCalories += val.fpVal;
+                      } else if (typeof val.intVal === 'number') {
+                        totalCalories += val.intVal;
+                      }
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+
+      const roundedCalories = Math.round(totalCalories * 10) / 10;
+      const dateString = date.toISOString().split('T')[0];
+      const activityDocRef = doc(db, 'users', user.uid, 'activity_logs', dateString);
+      
+      await setDoc(activityDocRef, {
+        caloriesBurned: roundedCalories,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+
+      console.log(`🔥 Sincronización exitosa con Google Fit para ${dateString}: ${roundedCalories} kcal`);
+    } catch (err) {
+      console.error('❌ Error al sincronizar con Google Fit:', err);
+    } finally {
+      setIsSyncingFit(false);
+    }
+  };
+
+  // Desconectar Google Fit
+  const disconnectGoogleFit = async () => {
+    if (!user) return;
+    if (confirm('¿Estás seguro de que deseas desconectar tu cuenta de Google Fit?')) {
+      const userDocRef = doc(db, 'users', user.uid);
+      try {
+        await updateDoc(userDocRef, {
+          googleFitTokens: deleteField(),
+          updatedAt: serverTimestamp()
+        });
+        setCaloriesBurned(0);
+        alert('Google Fit desconectado correctamente.');
+      } catch (err) {
+        console.error('Error al desconectar Google Fit:', err);
+        alert('Error al intentar desconectar.');
+      }
+    }
+  };
+
+  // Abrir popup de autorización
+  const connectGoogleFit = () => {
+    const width = 500;
+    const height = 650;
+    const left = window.screenX + (window.outerWidth - width) / 2;
+    const top = window.screenY + (window.outerHeight - height) / 2;
+    
+    window.open(
+      '/api/auth/google-fit',
+      'GoogleFitAuth',
+      `width=${width},height=${height},left=${left},top=${top},status=no,resizable=yes`
+    );
+  };
+
+  // Auto-sincronización al cambiar fecha o al detectar tokens
+  useEffect(() => {
+    if (user && userData?.googleFitTokens) {
+      syncGoogleFit(selectedDate, userData.googleFitTokens);
+    }
+  }, [user, selectedDate, userData?.googleFitTokens?.accessToken]);
+
+  // Renderizar la tarjeta de Google Fit
+  const renderGoogleFitCard = () => {
+    if (isGuestMode || !user) return null;
+
+    const isConnected = !!userData?.googleFitTokens;
+
+    return (
+      <Card className="bg-white rounded-xl shadow-sm border border-slate-100 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className={`p-2 rounded-lg ${isConnected ? 'bg-orange-50 text-orange-500' : 'bg-slate-100 text-slate-400'}`}>
+              <Activity className={`w-5 h-5 ${isConnected && isSyncingFit ? 'animate-spin' : ''}`} />
+            </div>
+            <div>
+              <h3 className="font-bold text-slate-800 text-sm">Google Fit</h3>
+              <p className="text-[11px] text-slate-500">
+                {isConnected ? 'Actividad sincronizada' : 'Vincula tu actividad física diaria'}
+              </p>
+            </div>
+          </div>
+          {isConnected && (
+            <span className="text-[10px] font-semibold bg-orange-50 text-orange-600 px-2 py-0.5 rounded-full border border-orange-100 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-orange-500 animate-ping" />
+              Sincronizado
+            </span>
+          )}
+        </div>
+
+        {isConnected ? (
+          <div className="bg-slate-50 rounded-lg p-3 flex items-center justify-between">
+            <div className="space-y-0.5">
+              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold font-sans">Calorías quemadas hoy</div>
+              <div className="text-lg font-extrabold text-slate-700 flex items-baseline gap-1">
+                <span>+{Math.round(caloriesBurned)}</span>
+                <span className="text-xs font-normal text-slate-500 font-sans">kcal</span>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => syncGoogleFit(selectedDate, userData.googleFitTokens!)}
+                disabled={isSyncingFit}
+                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 rounded border border-slate-200 text-slate-600 font-bold text-[10px] transition-colors flex items-center gap-1 disabled:opacity-50"
+                title="Sincronizar ahora"
+              >
+                {isSyncingFit ? (
+                  <Loader2 className="w-3 h-3 animate-spin text-orange-500" />
+                ) : (
+                  <span>🔄</span>
+                )}
+                <span>Sincronizar</span>
+              </button>
+              <button
+                onClick={disconnectGoogleFit}
+                className="px-2 py-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded text-[10px] font-bold transition-colors"
+              >
+                Desconectar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Sincroniza los datos de tus pasos y entrenamientos para ajustar tu meta calórica diaria automáticamente y comer más cuando gastas energía.
+            </p>
+            <button
+              onClick={connectGoogleFit}
+              className="w-full py-2 bg-gradient-to-r from-orange-500 to-red-500 hover:from-orange-600 hover:to-red-600 text-white rounded font-bold text-xs shadow-sm shadow-orange-500/10 transition-all flex items-center justify-center gap-2 hover:scale-[1.01]"
+            >
+              <Activity className="w-4 h-4" />
+              Conectar Google Fit
+            </button>
+          </div>
+        )}
+      </Card>
+    );
+  };
+
   // --- HANDLERS ---
   const handleLogin = async (email: string, password: string) => {
     await signInWithEmailAndPassword(auth, email, password);
@@ -471,14 +920,14 @@ export default function Home() {
     return false;
   };
 
-  // Función para comprimir imagen antes de guardar
+  // Función para comprimir imagen a miniatura súper ligera antes de guardar en Firestore (evita límite de 1MB)
   const compressImage = (base64: string): Promise<string> => {
     return new Promise((resolve) => {
       const img = new Image();
       img.onload = () => {
         const canvas = document.createElement('canvas');
-        const MAX_WIDTH = 800;
-        const MAX_HEIGHT = 800;
+        const MAX_WIDTH = 120;
+        const MAX_HEIGHT = 120;
         
         let width = img.width;
         let height = img.height;
@@ -501,7 +950,7 @@ export default function Home() {
         const ctx = canvas.getContext('2d');
         ctx?.drawImage(img, 0, 0, width, height);
         
-        resolve(canvas.toDataURL('image/jpeg', 0.7));
+        resolve(canvas.toDataURL('image/jpeg', 0.4));
       };
       img.src = base64;
     });
@@ -588,21 +1037,13 @@ export default function Home() {
   const saveLog = async () => {
     if (!user || !analysisResult) return;
     try {
-      console.log('💾 Guardando comida:', analysisResult.food_name);
-      
-      // Si previewImage es 'text', guardar null; si es base64, comprimirlo y guardarlo directo
-      let imageToSave = null;
-      if (previewImage && previewImage !== 'text') {
-        console.log('🖼️ Comprimiendo imagen para guardar en DB...');
-        const compressedBase64 = await compressImage(previewImage);
-        imageToSave = compressedBase64;
-        console.log('✅ Imagen lista para guardar:', (imageToSave.length / 1024).toFixed(2), 'KB');
-      }
+      console.log('💾 Guardando comida (sin imagen):', analysisResult.food_name);
       
       const docRef = await addDoc(collection(db, 'users', user.uid, 'calorie_logs'), {
         ...analysisResult,
         createdAt: serverTimestamp(),
-        imagePreview: imageToSave 
+        imagePreview: null, // No guardamos imagen para mantener la base de datos 100% gratuita
+        meal_type: selectedMealType
       });
       console.log('✅ Comida guardada con ID:', docRef.id);
       
@@ -625,6 +1066,30 @@ export default function Home() {
   const deleteLog = async (id: string) => {
     if (confirm("¿Borrar este registro?")) {
       await deleteDoc(doc(db, 'users', user!.uid, 'calorie_logs', id));
+    }
+  };
+
+  const updateHydration = async (amountChange: number) => {
+    if (!user) {
+      // Modo invitado
+      setGuestWaterIntake(prev => Math.max(0, prev + amountChange));
+      return;
+    }
+    
+    try {
+      const dateString = selectedDate.toISOString().split('T')[0];
+      const hydrationDocRef = doc(db, 'users', user.uid, 'hydration_logs', dateString);
+      const newAmount = Math.max(0, waterIntake + amountChange);
+      
+      await setDoc(hydrationDocRef, {
+        amount: newAmount,
+        updatedAt: serverTimestamp()
+      }, { merge: true });
+      
+      console.log(`💧 Hidratación actualizada a ${newAmount} ml`);
+    } catch (error) {
+      console.error('❌ Error al actualizar hidratación:', error);
+      alert('Error al registrar el agua. Intenta de nuevo.');
     }
   };
 
@@ -719,9 +1184,16 @@ export default function Home() {
     sodium: acc.sodium + (curr.sodium || 0),
   }), { calories: 0, protein: 0, carbs: 0, fat: 0, sugar: 0, fiber: 0, sodium: 0 });
 
-  // Calcular progreso si hay targets
-  const progress = userData?.targets 
-    ? calculateDailyProgress(totals, userData.targets)
+  // Calcular progreso si hay targets, ajustando la meta con las calorías quemadas por Google Fit
+  const adjustedTargets = userData?.targets 
+    ? {
+        ...userData.targets,
+        calories: userData.targets.calories + (userData.googleFitTokens ? caloriesBurned : 0)
+      }
+    : null;
+
+  const progress = adjustedTargets 
+    ? calculateDailyProgress(totals, adjustedTargets)
     : null;
 
   // Handler para modo invitado
@@ -876,7 +1348,7 @@ export default function Home() {
                       <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
                     </div>
                   ) : guestAnalysisResult ? (
-                    <div className="space-y-4">
+                    <div className="space-y-4 max-h-[60vh] overflow-y-auto pr-1">
                       <div>
                         <h3 className="text-xl font-bold text-slate-900">{guestAnalysisResult.food_name}</h3>
                         <p className="text-orange-500 font-bold text-lg">{guestAnalysisResult.calories} kcal</p>
@@ -884,6 +1356,35 @@ export default function Home() {
                           <p className="text-xs text-slate-500">Confianza: {guestAnalysisResult.confidence}</p>
                         )}
                       </div>
+                      
+                      {/* Clasificación NOVA */}
+                      {guestAnalysisResult.nova_group && (
+                        <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                          guestAnalysisResult.nova_group === 1 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
+                          guestAnalysisResult.nova_group === 2 ? 'bg-slate-50 border-slate-200 text-slate-800' :
+                          guestAnalysisResult.nova_group === 3 ? 'bg-amber-50 border-amber-200 text-amber-900' :
+                          'bg-rose-50 border-rose-200 text-rose-900'
+                        }`}>
+                          <div className="font-bold flex items-center gap-1.5 text-sm mb-0.5">
+                            <span>
+                              {guestAnalysisResult.nova_group === 1 ? '🟢' :
+                               guestAnalysisResult.nova_group === 2 ? '⚪' :
+                               guestAnalysisResult.nova_group === 3 ? '🟡' :
+                               '🔴'}
+                            </span>
+                            Grupo NOVA {guestAnalysisResult.nova_group} - {
+                              guestAnalysisResult.nova_group === 1 ? 'Mínimamente procesado' :
+                              guestAnalysisResult.nova_group === 2 ? 'Ingrediente culinario' :
+                              guestAnalysisResult.nova_group === 3 ? 'Alimento procesado' :
+                              'Ultraprocesado'
+                            }
+                          </div>
+                          {guestAnalysisResult.nova_reason && (
+                            <p className="opacity-95">{guestAnalysisResult.nova_reason}</p>
+                          )}
+                        </div>
+                      )}
+                      
                       <div className="grid grid-cols-3 gap-2">
                         <div className="bg-blue-50 rounded-lg p-2 text-center">
                           <div className="text-xs text-blue-600 font-semibold">Proteína</div>
@@ -948,6 +1449,9 @@ export default function Home() {
               </div>
             </div>
           )}
+
+          {/* Tracker de Hidratación */}
+          {renderHydrationCard(true)}
 
           {/* Instrucciones */}
           <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-white">
@@ -1181,7 +1685,13 @@ export default function Home() {
         </div>
 
         {/* Dashboard de Progreso */}
-        {progress && <ProgressDashboard progress={progress} />}
+        {progress && <ProgressDashboard progress={progress} caloriesBurned={userData?.googleFitTokens ? caloriesBurned : 0} />}
+
+        {/* Tracker de Hidratación */}
+        {renderHydrationCard(false)}
+
+        {/* Sincronización Google Fit */}
+        {renderGoogleFitCard()}
 
         {/* Modal de Análisis */}
         {previewImage && (
@@ -1203,7 +1713,7 @@ export default function Home() {
                     <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
                   </div>
                 ) : analysisResult ? (
-                  <div className="space-y-4">
+                  <div className="space-y-4 max-h-[70vh] overflow-y-auto pr-1">
                     <div>
                       <h3 className="text-xl font-bold text-slate-900">{analysisResult.food_name}</h3>
                       <p className="text-orange-500 font-bold text-lg">{analysisResult.calories} kcal</p>
@@ -1211,6 +1721,52 @@ export default function Home() {
                         <p className="text-xs text-slate-500">Confianza: {analysisResult.confidence}</p>
                       )}
                     </div>
+                    
+                    {/* Clasificación NOVA */}
+                    {analysisResult.nova_group && (
+                      <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                        analysisResult.nova_group === 1 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
+                        analysisResult.nova_group === 2 ? 'bg-slate-50 border-slate-200 text-slate-800' :
+                        analysisResult.nova_group === 3 ? 'bg-amber-50 border-amber-200 text-amber-900' :
+                        'bg-rose-50 border-rose-200 text-rose-900'
+                      }`}>
+                        <div className="font-bold flex items-center gap-1.5 text-sm mb-0.5">
+                          <span>
+                            {analysisResult.nova_group === 1 ? '🟢' :
+                             analysisResult.nova_group === 2 ? '⚪' :
+                             analysisResult.nova_group === 3 ? '🟡' :
+                             '🔴'}
+                          </span>
+                          Grupo NOVA {analysisResult.nova_group} - {
+                            analysisResult.nova_group === 1 ? 'Mínimamente procesado' :
+                            analysisResult.nova_group === 2 ? 'Ingrediente culinario' :
+                            analysisResult.nova_group === 3 ? 'Alimento procesado' :
+                            'Ultraprocesado'
+                          }
+                        </div>
+                        {analysisResult.nova_reason && (
+                          <p className="opacity-95">{analysisResult.nova_reason}</p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Selector de Categoría (Pacing) */}
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                        🍳 Categoría de Comida
+                      </label>
+                      <select 
+                        value={selectedMealType} 
+                        onChange={(e) => setSelectedMealType(e.target.value as any)}
+                        className="w-full px-3 py-2.5 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500"
+                      >
+                        <option value="desayuno">🍳 Desayuno</option>
+                        <option value="almuerzo">🍗 Almuerzo</option>
+                        <option value="cena">🌙 Cena</option>
+                        <option value="snack">🍎 Snack / Colación</option>
+                      </select>
+                    </div>
+
                     <div className="grid grid-cols-3 gap-2">
                       <div className="bg-blue-50 rounded-lg p-2 text-center">
                         <div className="text-xs text-blue-600 font-semibold">Proteína</div>
@@ -1287,17 +1843,34 @@ export default function Home() {
             <div className="space-y-3">
               {logs.map((log) => (
                 <Card key={log.id} className="flex items-center gap-4 p-3 animate-in slide-in-from-bottom-2 duration-300">
-                  <img 
-                    src={log.imagePreview || '/default-images/food.png'} 
-                    className="w-16 h-16 rounded-lg object-cover bg-slate-100" 
-                    alt="food"
-                    onError={(e) => {
-                      e.currentTarget.src = '/default-images/food.png';
-                    }}
-                  />
+                  <div className="w-16 h-16 rounded-xl bg-orange-50 border border-orange-100/50 flex items-center justify-center flex-shrink-0 text-3xl shadow-sm">
+                    {getFoodEmoji(log.food_name)}
+                  </div>
                   <div className="flex-1 min-w-0">
-                    <h4 className="font-bold text-slate-800 truncate">{log.food_name}</h4>
-                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-1 flex-wrap">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <h4 className="font-bold text-slate-800 truncate">{log.food_name}</h4>
+                      {log.meal_type && (
+                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider ${
+                          log.meal_type === 'desayuno' ? 'bg-amber-100 text-amber-800' :
+                          log.meal_type === 'almuerzo' ? 'bg-sky-100 text-sky-800' :
+                          log.meal_type === 'cena' ? 'bg-indigo-100 text-indigo-800' :
+                          'bg-slate-100 text-slate-600'
+                        }`}>
+                          {log.meal_type}
+                        </span>
+                      )}
+                      {log.nova_group && (
+                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${
+                          log.nova_group === 1 ? 'bg-emerald-100 text-emerald-800' :
+                          log.nova_group === 2 ? 'bg-slate-100 text-slate-800' :
+                          log.nova_group === 3 ? 'bg-amber-100 text-amber-800' :
+                          'bg-rose-100 text-rose-800'
+                        }`} title={log.nova_reason}>
+                          NOVA {log.nova_group}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2 text-xs text-slate-500 mt-1.5 flex-wrap">
                       <span className="font-bold text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full">{log.calories} kcal</span>
                       <span className="bg-blue-50 text-blue-600 px-2 py-0.5 rounded">P: {log.protein}g</span>
                       <span className="bg-green-50 text-green-600 px-2 py-0.5 rounded">C: {log.carbs}g</span>

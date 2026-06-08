@@ -4,9 +4,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-// Usamos los modelos soportados actualmente por la API
-const MODEL_FLASH = 'gemini-2.5-flash';
-const MODEL_PRO = 'gemini-2.5-pro';
+const MODEL_PRIMARY = 'gemini-3.5-flash';
+const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -27,11 +26,34 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
         ]
       }],
       generationConfig: {
-        temperature: 0.4,
+        temperature: 0.2,
         topK: 32,
         topP: 1,
-        maxOutputTokens: 2048, // Aumentado para permitir respuestas completas
-        responseMimeType: "application/json" // <--- ¡MAGIA! Fuerza JSON puro
+        maxOutputTokens: 2048,
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: "OBJECT",
+          properties: {
+            food_name: { type: "STRING" },
+            calories: { type: "NUMBER" },
+            protein: { type: "NUMBER" },
+            carbs: { type: "NUMBER" },
+            fat: { type: "NUMBER" },
+            sugar: { type: "NUMBER" },
+            fiber: { type: "NUMBER" },
+            sodium: { type: "NUMBER" },
+            confidence: { type: "STRING" },
+            detected_items: { 
+              type: "ARRAY", 
+              items: { type: "STRING" } 
+            },
+            portion_note: { type: "STRING" },
+            nova_group: { type: "INTEGER" },
+            nova_reason: { type: "STRING" },
+            error: { type: "STRING" }
+          },
+          required: ["food_name", "calories", "protein", "carbs", "fat"]
+        }
       }
     })
   });
@@ -72,20 +94,22 @@ export async function POST(request: NextRequest) {
   "sodium": 300,
   "confidence": "Alta",
   "detected_items": ["ingrediente1", "ingrediente2"],
-  "portion_note": "descripción de la porción"
+  "portion_note": "descripción de la porción",
+  "nova_group": 1,
+  "nova_reason": "Breve explicación en español del grupo NOVA asignado (1: Mínimamente procesado, 2: Ingrediente culinario procesado, 3: Procesado, 4: Ultraprocesado)"
 }
 Si no hay comida: {"error": "No se detectó comida"}`;
 
-    // 3. INTENTO 1: Usar Gemini Pro (Mejor razonamiento)
-    console.log('🤖 Intentando con Gemini Pro...');
-    let response = await callGeminiAPI(MODEL_PRO, image, mimeType, prompt);
-    let usedModel = MODEL_PRO;
+    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash)
+    console.log(`🤖 Intentando con ${MODEL_PRIMARY}...`);
+    let response = await callGeminiAPI(MODEL_PRIMARY, image, mimeType, prompt);
+    let usedModel = MODEL_PRIMARY;
 
-    // 4. Lógica de Fallback (Si Pro falla por cuota 429, usar Flash)
+    // 4. Lógica de Fallback (Si falla por cuota 429, usar modelo secundario gemini-3.1-flash-lite)
     if (response.status === 429) {
-      console.warn('⚠️ Cuota de Pro excedida (429). Cambiando a Flash ⚡...');
-      response = await callGeminiAPI(MODEL_FLASH, image, mimeType, prompt);
-      usedModel = MODEL_FLASH;
+      console.warn(`⚠️ Cuota de ${MODEL_PRIMARY} excedida (429). Cambiando a ${MODEL_FALLBACK} ⚡...`);
+      response = await callGeminiAPI(MODEL_FALLBACK, image, mimeType, prompt);
+      usedModel = MODEL_FALLBACK;
     }
 
     // Manejo de otros errores

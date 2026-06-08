@@ -6,6 +6,7 @@ import { Flame, Target } from 'lucide-react';
 
 interface ProgressDashboardProps {
   progress: DailyProgress;
+  caloriesBurned?: number;
 }
 
 const MacroBar = ({ 
@@ -55,7 +56,7 @@ const MacroBar = ({
   );
 };
 
-export default function ProgressDashboard({ progress }: ProgressDashboardProps) {
+export default function ProgressDashboard({ progress, caloriesBurned = 0 }: ProgressDashboardProps) {
   const caloriesIsOver = progress.calories.percentage > 100;
   const caloriesRemaining = progress.calories.remaining;
 
@@ -84,6 +85,16 @@ export default function ProgressDashboard({ progress }: ProgressDashboardProps) 
           <span className="text-2xl opacity-80 mb-2">/ {progress.calories.target}</span>
           <span className="text-lg opacity-70 mb-2">kcal</span>
         </div>
+
+        {caloriesBurned > 0 && (
+          <div className="text-xs bg-white/10 rounded-lg p-2.5 mb-4 flex items-center justify-between backdrop-blur-sm border border-white/10 font-mono">
+            <span className="flex items-center gap-1">🎯 Base: <strong>{Math.round(progress.calories.target - caloriesBurned)}</strong> kcal</span>
+            <span>+</span>
+            <span className="flex items-center gap-1">🏃‍♂️ Actividad: <strong>{Math.round(caloriesBurned)}</strong> kcal</span>
+            <span>=</span>
+            <span>🔥 Meta: <strong>{Math.round(progress.calories.target)}</strong> kcal</span>
+          </div>
+        )}
         
         <div className="w-full bg-white/20 rounded-full h-4 overflow-hidden backdrop-blur-sm">
           <div
