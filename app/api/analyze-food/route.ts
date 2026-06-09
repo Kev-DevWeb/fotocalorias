@@ -35,13 +35,13 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
           type: "OBJECT",
           properties: {
             food_name: { type: "STRING" },
-            calories: { type: "NUMBER" },
-            protein: { type: "NUMBER" },
-            carbs: { type: "NUMBER" },
-            fat: { type: "NUMBER" },
-            sugar: { type: "NUMBER" },
-            fiber: { type: "NUMBER" },
-            sodium: { type: "NUMBER" },
+            calories: { type: "INTEGER" },
+            protein: { type: "INTEGER" },
+            carbs: { type: "INTEGER" },
+            fat: { type: "INTEGER" },
+            sugar: { type: "INTEGER" },
+            fiber: { type: "INTEGER" },
+            sodium: { type: "INTEGER" },
             confidence: { type: "STRING" },
             detected_items: { 
               type: "ARRAY", 
@@ -100,15 +100,15 @@ export async function POST(request: NextRequest) {
       ? `\nCONTEXTO DE LA PORCIÓN DADO POR EL USUARIO: "${portionContext}". DEBES ajustar estrictamente tus estimaciones de gramos y calorías en base a este contexto visual/textual (por ejemplo, si dice que es la mitad, divide los valores a la mitad; si dice plato grande, auméntalos proporcionalmente).\n` 
       : "";
 
-    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en texto plano (sin markdown, sin explicaciones). Todos los valores numéricos de calorías y macronutrientes deben ser números simples (enteros o flotantes con máximo 1 decimal, ej. 10 o 10.5). NO generes cadenas largas de ceros decimales repetidos.:${contextInstruction}
+    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en texto plano (sin markdown, sin explicaciones). Todos los valores numéricos de calorías y macronutrientes deben ser números enteros:${contextInstruction}
 {
   "food_name": "Nombre descriptivo de la comida",
   "calories": 250,
-  "protein": 15.5,
-  "carbs": 30.2,
-  "fat": 10.5,
-  "sugar": 5.0,
-  "fiber": 2.5,
+  "protein": 15,
+  "carbs": 30,
+  "fat": 10,
+  "sugar": 5,
+  "fiber": 2,
   "sodium": 300,
   "confidence": "Alta",
   "detected_items": ["ingrediente1", "ingrediente2"],
@@ -120,6 +120,7 @@ Si no hay comida: {"error": "No se detectó comida"}`;
 
     // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash)
     console.log(`🤖 Intentando con ${MODEL_PRIMARY}...`);
+    console.log(`✉️ Prompt enviado:\n${prompt}`);
     let response = await callGeminiAPI(MODEL_PRIMARY, image, mimeType, prompt);
     let usedModel = MODEL_PRIMARY;
 

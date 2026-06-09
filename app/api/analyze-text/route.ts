@@ -27,13 +27,13 @@ async function callGeminiAPI(model: string, promptText: string) {
           type: "OBJECT",
           properties: {
             food_name: { type: "STRING" },
-            calories: { type: "NUMBER" },
-            protein: { type: "NUMBER" },
-            carbs: { type: "NUMBER" },
-            fat: { type: "NUMBER" },
-            sugar: { type: "NUMBER" },
-            fiber: { type: "NUMBER" },
-            sodium: { type: "NUMBER" },
+            calories: { type: "INTEGER" },
+            protein: { type: "INTEGER" },
+            carbs: { type: "INTEGER" },
+            fat: { type: "INTEGER" },
+            sugar: { type: "INTEGER" },
+            fiber: { type: "INTEGER" },
+            sodium: { type: "INTEGER" },
             confidence: { type: "STRING" },
             detected_items: { 
               type: "ARRAY", 
@@ -92,17 +92,17 @@ export async function POST(request: NextRequest) {
 
     const prompt = `Eres un nutricionista experto. Analiza esta descripción de comida: "${description}"
 
-Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones. Todos los valores numéricos de calorías y macronutrientes deben ser números simples (enteros o flotantes con máximo 1 decimal, ej. 10 o 10.5). NO generes cadenas largas de ceros decimales repetidos.
+Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones. Todos los valores numéricos de calorías y macronutrientes deben ser números enteros.
 
 Devuelve SOLO este JSON válido en texto plano (sin markdown ni explicaciones), usando comillas dobles para TODAS las propiedades y valores de texto:
 {
   "food_name": "Nombre descriptivo de la comida",
   "calories": 250,
-  "protein": 15.5,
-  "carbs": 30.2,
-  "fat": 10.5,
-  "sugar": 5.0,
-  "fiber": 2.5,
+  "protein": 15,
+  "carbs": 30,
+  "fat": 10,
+  "sugar": 5,
+  "fiber": 2,
   "sodium": 300,
   "confidence": "Alta",
   "detected_items": ["ingrediente1", "ingrediente2"],
@@ -115,6 +115,7 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
 
     // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash)
     console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
+    console.log(`✉️ Prompt enviado:\n${prompt}`);
     let response = await callGeminiAPI(MODEL_PRIMARY, prompt);
 
     let usedModel = MODEL_PRIMARY;
