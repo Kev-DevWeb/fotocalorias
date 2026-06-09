@@ -335,6 +335,7 @@ export default function Home() {
   // Estados de Google Fit
   const [caloriesBurned, setCaloriesBurned] = useState<number>(0);
   const [isSyncingFit, setIsSyncingFit] = useState(false);
+  const [googleFitDebug, setGoogleFitDebug] = useState<string | null>(null);
 
   // Estados para entrada manual (cuando la IA falla o se acaban los tokens)
   const [showManualInputModal, setShowManualInputModal] = useState(false);
@@ -611,8 +612,9 @@ export default function Home() {
     return () => unsubscribe();
   }, [user, selectedDate]);
 
-  // Obtener un access token válido, refrescándolo de ser necesario
+  // Obtener un access token válido de Google Fit, refrescándolo de ser necesario
   const getValidAccessToken = async (tokens: { accessToken: string; refreshToken: string; expiresAt: number }) => {
+    // Si expira en menos de un minuto, lo refrescamos
     if (Date.now() < tokens.expiresAt - 60000) {
       return tokens.accessToken;
     }
@@ -626,7 +628,7 @@ export default function Home() {
       });
 
       if (!response.ok) {
-        throw new Error('Error al llamar al endpoint de refresco');
+        throw new Error('Error al llamar al endpoint de refresco de Google Fit');
       }
 
       const data = await response.json();
@@ -639,6 +641,7 @@ export default function Home() {
         const userDocRef = doc(db, 'users', user.uid);
         await updateDoc(userDocRef, {
           'googleFitTokens.accessToken': data.accessToken,
+          ...(data.refreshToken ? { 'googleFitTokens.refreshToken': data.refreshToken } : {}),
           'googleFitTokens.expiresAt': data.expiresAt,
           updatedAt: serverTimestamp()
         });
@@ -658,53 +661,61 @@ export default function Home() {
     try {
       const validToken = await getValidAccessToken(tokens);
       
+      const dateString = date.toISOString().split('T')[0];
+      
+      // Calcular límites de tiempo para la fecha seleccionada en milisegundos
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
+      const startTimeMillis = startOfDay.getTime();
+
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
-
-      const startTimeMillis = startOfDay.getTime();
       const endTimeMillis = endOfDay.getTime();
 
-      const response = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
+      // 1. Fetch calories bucketed by Activity Segment
+      // Esto nos permite ver los bloques de actividad (caminar, correr, etc.) y las calorías quemadas en cada bloque
+      const expendedResponse = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataset:aggregate', {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${validToken}`,
           'Content-Type': 'application/json'
         },
         body: JSON.stringify({
-          aggregateBy: [
-            {
-              dataSourceId: "derived:com.google.calories.expended:com.google.android.gms:from_activities"
-            }
-          ],
-          bucketByTime: {
-            durationMillis: 86400000 // 24 horas
-          },
+          aggregateBy: [{ dataTypeName: 'com.google.calories.expended' }],
+          bucketByActivitySegment: { minDurationMillis: 60000 },
           startTimeMillis,
           endTimeMillis
         })
       });
 
-      if (!response.ok) {
-        throw new Error(`Error HTTP: ${response.status}`);
+      if (!expendedResponse.ok) {
+        const errorBody = await expendedResponse.text();
+        throw new Error(`Error HTTP de Google Fit (Expended): ${expendedResponse.status} - ${errorBody}`);
       }
+      const expendedData = await expendedResponse.json();
 
-      const data = await response.json();
+      console.log(`📦 Calorías por Actividad:`, JSON.stringify(expendedData, null, 2));
+      setGoogleFitDebug(JSON.stringify(expendedData, null, 2));
       
-      let totalCalories = 0;
-      if (data.bucket) {
-        for (const bucket of data.bucket) {
-          if (bucket.dataset) {
-            for (const dataset of bucket.dataset) {
-              if (dataset.point) {
-                for (const point of dataset.point) {
-                  if (point.value) {
-                    for (const val of point.value) {
-                      if (typeof val.fpVal === 'number') {
-                        totalCalories += val.fpVal;
-                      } else if (typeof val.intVal === 'number') {
-                        totalCalories += val.intVal;
+      let activeCalories = 0;
+
+      // Lista de códigos de actividad de Google Fit que representan inactividad
+      // 0: In vehicle, 3: Still, 4: Unknown, 72-112: Sleeping variants
+      const INACTIVE_ACTIVITIES = [0, 3, 4, 72, 73, 74, 75, 76, 109, 110, 111, 112];
+
+      if (expendedData.bucket) {
+        for (const bucket of expendedData.bucket) {
+          const activityType = bucket.activity;
+          
+          // Si es una actividad real (caminar, correr, bici, etc.)
+          if (typeof activityType === 'number' && !INACTIVE_ACTIVITIES.includes(activityType)) {
+            if (bucket.dataset) {
+              for (const dataset of bucket.dataset) {
+                if (dataset.point) {
+                  for (const point of dataset.point) {
+                    if (point.value) {
+                      for (const val of point.value) {
+                        activeCalories += typeof val.fpVal === 'number' ? val.fpVal : (typeof val.intVal === 'number' ? val.intVal : 0);
                       }
                     }
                   }
@@ -715,8 +726,7 @@ export default function Home() {
         }
       }
 
-      const roundedCalories = Math.round(totalCalories * 10) / 10;
-      const dateString = date.toISOString().split('T')[0];
+      const roundedCalories = Math.round(activeCalories * 10) / 10;
       const activityDocRef = doc(db, 'users', user.uid, 'activity_logs', dateString);
       
       await setDoc(activityDocRef, {
@@ -729,6 +739,258 @@ export default function Home() {
       console.error('❌ Error al sincronizar con Google Fit:', err);
     } finally {
       setIsSyncingFit(false);
+    }
+  };
+
+  // Asegurar que exista el origen de datos de nutrición en Google Fit
+  const ensureNutritionDataSource = async (accessToken: string): Promise<string> => {
+    try {
+      // 1. Listar los orígenes de datos existentes para encontrar el nuestro
+      const listResponse = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataSources?dataTypeName=com.google.nutrition', {
+        method: 'GET',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`
+        }
+      });
+      
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        const existing = listData.dataSource?.find((ds: any) => ds.dataStreamName === 'xcal_nutrition');
+        if (existing && existing.dataStreamId) {
+          return existing.dataStreamId;
+        }
+      }
+      
+      // 2. Si no existe, lo creamos
+      console.log('🌱 Creando origen de datos de nutrición en Google Fit...');
+      const createResponse = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataSources', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dataStreamName: 'xcal_nutrition',
+          type: 'raw',
+          application: {
+            name: 'xCal'
+          },
+          dataType: {
+            name: 'com.google.nutrition',
+            field: [
+              { name: 'nutrients', format: 'map' },
+              { name: 'meal_type', format: 'integer' },
+              { name: 'food_item', format: 'string' }
+            ]
+          }
+        })
+      });
+      
+      if (!createResponse.ok) {
+        const errText = await createResponse.text();
+        throw new Error(`Error al crear origen de datos: ${createResponse.status} - ${errText}`);
+      }
+      
+      const data = await createResponse.json();
+      return data.dataStreamId; // Google Fit retorna dataStreamId, no dataSourceId
+    } catch (err) {
+      console.error('❌ Error asegurando origen de datos de nutrición:', err);
+      throw err;
+    }
+  };
+
+  // Sincronizar alimentos/nutrición a Google Fit
+  const syncNutritionToGoogleFit = async (
+    dayLogs: CalorieLog[],
+    date: Date,
+    tokens: { accessToken: string; refreshToken: string; expiresAt: number }
+  ) => {
+    if (!user) return;
+    try {
+      const validToken = await getValidAccessToken(tokens);
+      const dataSourceId = await ensureNutritionDataSource(validToken);
+      
+      // Calcular límites de tiempo en milisegundos y nanosegundos
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const startTimeMillis = startOfDay.getTime();
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      const endTimeMillis = endOfDay.getTime();
+
+      const datasetId = `${startTimeMillis * 1000000}-${endTimeMillis * 1000000}`;
+      
+      // Mapear cada log de calorías a un punto de datos de Google Fit
+      const points = dayLogs.map((log, index) => {
+        // Usar la fecha de creación del log si está disponible, de lo contrario distribuir en el día
+        let logTimeMillis = startTimeMillis + (index * 60000); // Espaciar por 1 minuto
+        if (log.createdAt && typeof log.createdAt.toMillis === 'function') {
+          logTimeMillis = log.createdAt.toMillis();
+        } else if (log.createdAt && typeof log.createdAt.seconds === 'number') {
+          logTimeMillis = log.createdAt.seconds * 1000;
+        }
+
+        const nutrientsMap: Array<{ key: string; value: { fpVal: number } }> = [
+          { key: 'calories', value: { fpVal: log.calories || 0 } }
+        ];
+
+        if (log.protein) nutrientsMap.push({ key: 'protein', value: { fpVal: log.protein } });
+        if (log.carbs) nutrientsMap.push({ key: 'carbs.total', value: { fpVal: log.carbs } });
+        if (log.fat) nutrientsMap.push({ key: 'fat.total', value: { fpVal: log.fat } });
+        if (log.sugar) nutrientsMap.push({ key: 'sugar', value: { fpVal: log.sugar } });
+        if (log.fiber) nutrientsMap.push({ key: 'dietary_fiber', value: { fpVal: log.fiber } });
+        // Sodium en Google Fit se mide en GRAMOS. En la app se registra en miligramos (mg), por lo que dividimos entre 1000.
+        if (log.sodium) nutrientsMap.push({ key: 'sodium', value: { fpVal: log.sodium / 1000 } });
+
+        // Mapear tipo de comida
+        let mealTypeVal = 0; // desconocido
+        if (log.meal_type === 'desayuno') mealTypeVal = 1;
+        else if (log.meal_type === 'almuerzo') mealTypeVal = 2;
+        else if (log.meal_type === 'cena') mealTypeVal = 3;
+        else if (log.meal_type === 'snack') mealTypeVal = 4;
+
+        return {
+          startTimeNanos: logTimeMillis * 1000000,
+          endTimeNanos: (logTimeMillis + 1000) * 1000000, // Duración de 1 segundo
+          dataTypeName: 'com.google.nutrition',
+          value: [
+            { mapVal: nutrientsMap },
+            { intVal: mealTypeVal },
+            { strVal: log.food_name || 'Alimento' }
+          ]
+        };
+      });
+
+      const response = await fetch(`https://www.googleapis.com/fitness/v1/users/me/dataSources/${dataSourceId}/datasets/${datasetId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${validToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dataSourceId,
+          minStartTimeNs: startTimeMillis * 1000000,
+          maxEndTimeNs: endTimeMillis * 1000000,
+          point: points
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error HTTP al sincronizar comida: ${response.status} - ${errorText}`);
+      }
+
+      console.log(`🍎 Sincronizados exitosamente ${points.length} alimentos con Google Fit para el día ${date.toISOString().split('T')[0]}`);
+    } catch (err) {
+      console.error('❌ Error al sincronizar alimentos con Google Fit:', err);
+    }
+  };
+
+  // Asegurar que exista el origen de datos de hidratación en Google Fit
+  const ensureHydrationDataSource = async (accessToken: string): Promise<string> => {
+    try {
+      const listResponse = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataSources?dataTypeName=com.google.hydration', {
+        method: 'GET',
+        headers: { 'Authorization': `Bearer ${accessToken}` }
+      });
+      
+      if (listResponse.ok) {
+        const listData = await listResponse.json();
+        const existing = listData.dataSource?.find((ds: any) => ds.dataStreamName === 'xcal_hydration');
+        if (existing && existing.dataStreamId) {
+          return existing.dataStreamId;
+        }
+      }
+      
+      console.log('💧 Creando origen de datos de hidratación en Google Fit...');
+      const createResponse = await fetch('https://www.googleapis.com/fitness/v1/users/me/dataSources', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${accessToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dataStreamName: 'xcal_hydration',
+          type: 'raw',
+          application: { name: 'xCal' },
+          dataType: {
+            name: 'com.google.hydration',
+            field: [{ name: 'volume', format: 'floatPoint' }]
+          }
+        })
+      });
+      
+      if (!createResponse.ok) {
+        const errText = await createResponse.text();
+        throw new Error(`Error al crear origen de datos de hidratación: ${createResponse.status} - ${errText}`);
+      }
+      
+      const data = await createResponse.json();
+      return data.dataStreamId;
+    } catch (err) {
+      console.error('❌ Error asegurando origen de datos de hidratación:', err);
+      throw err;
+    }
+  };
+
+  // Sincronizar hidratación a Google Fit
+  const syncHydrationToGoogleFit = async (
+    waterMl: number,
+    date: Date,
+    tokens: { accessToken: string; refreshToken: string; expiresAt: number }
+  ) => {
+    if (!user) return;
+    try {
+      const validToken = await getValidAccessToken(tokens);
+      const dataSourceId = await ensureHydrationDataSource(validToken);
+      
+      const startOfDay = new Date(date);
+      startOfDay.setHours(0, 0, 0, 0);
+      const startTimeMillis = startOfDay.getTime();
+
+      const endOfDay = new Date(date);
+      endOfDay.setHours(23, 59, 59, 999);
+      // Cap endTime to current time if the date is today to avoid writing data into the future
+      let endMillisForPoint = endOfDay.getTime();
+      if (date.toDateString() === new Date().toDateString()) {
+        endMillisForPoint = Date.now();
+      }
+
+      const datasetId = `${startTimeMillis * 1000000}-${endOfDay.getTime() * 1000000}`;
+      
+      // En Google Fit la hidratación es en litros
+      const volumeLiters = waterMl / 1000;
+
+      const points = [{
+        startTimeNanos: startTimeMillis * 1000000,
+        endTimeNanos: endMillisForPoint * 1000000,
+        dataTypeName: 'com.google.hydration',
+        value: [{ fpVal: volumeLiters }]
+      }];
+
+      const response = await fetch(`https://www.googleapis.com/fitness/v1/users/me/dataSources/${dataSourceId}/datasets/${datasetId}`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${validToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          dataSourceId,
+          minStartTimeNs: startTimeMillis * 1000000,
+          maxEndTimeNs: endOfDay.getTime() * 1000000,
+          point: volumeLiters > 0 ? points : [] // Si es 0, enviamos array vacío para limpiar el día
+        })
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(`Error HTTP al sincronizar agua: ${response.status} - ${errorText}`);
+      }
+
+      console.log(`💧 Sincronizados exitosamente ${volumeLiters} L de agua con Google Fit`);
+    } catch (err) {
+      console.error('❌ Error al sincronizar agua con Google Fit:', err);
     }
   };
 
@@ -772,6 +1034,40 @@ export default function Home() {
     }
   }, [user, selectedDate, userData?.googleFitTokens?.accessToken]);
 
+  // Auto-sincronización de nutrición a Google Fit al cambiar logs o fecha
+  useEffect(() => {
+    if (user) {
+      if (userData?.googleFitTokens) {
+        syncNutritionToGoogleFit(logs, selectedDate, userData.googleFitTokens);
+      }
+      
+      // Enviar datos a la Companion App nativa (si estamos dentro del WebView)
+      if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'SYNC_NUTRITION',
+          payload: { logs, dateStr: selectedDate.toISOString() }
+        }));
+      }
+    }
+  }, [user, logs, selectedDate, userData?.googleFitTokens?.accessToken]);
+
+  // Auto-sincronización de hidratación a Google Fit al cambiar agua consumida o fecha
+  useEffect(() => {
+    if (user && waterIntake >= 0) {
+      if (userData?.googleFitTokens) {
+        syncHydrationToGoogleFit(waterIntake, selectedDate, userData.googleFitTokens);
+      }
+      
+      // Enviar datos a la Companion App nativa (si estamos dentro del WebView)
+      if (typeof window !== 'undefined' && (window as any).ReactNativeWebView) {
+        (window as any).ReactNativeWebView.postMessage(JSON.stringify({
+          type: 'SYNC_HYDRATION',
+          payload: { waterMl: waterIntake, dateStr: selectedDate.toISOString() }
+        }));
+      }
+    }
+  }, [user, waterIntake, selectedDate, userData?.googleFitTokens?.accessToken]);
+
   // Renderizar la tarjeta de Google Fit
   const renderGoogleFitCard = () => {
     if (isGuestMode || !user) return null;
@@ -801,40 +1097,56 @@ export default function Home() {
         </div>
 
         {isConnected ? (
-          <div className="bg-slate-50 rounded-lg p-3 flex items-center justify-between">
-            <div className="space-y-0.5">
-              <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold font-sans">Calorías quemadas hoy</div>
-              <div className="text-lg font-extrabold text-slate-700 flex items-baseline gap-1">
-                <span>+{Math.round(caloriesBurned)}</span>
-                <span className="text-xs font-normal text-slate-500 font-sans">kcal</span>
+          <div className="flex flex-col gap-3">
+            <div className="bg-slate-50 rounded-lg p-3 flex items-center justify-between">
+              <div className="space-y-0.5">
+                <div className="text-[10px] uppercase tracking-wider text-slate-400 font-bold font-sans">Calorías de ejercicio</div>
+                <div className="text-lg font-extrabold text-slate-700 flex items-baseline gap-1">
+                  <span>+{Math.round(caloriesBurned)}</span>
+                  <span className="text-xs font-normal text-slate-500 font-sans">kcal</span>
+                </div>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => syncGoogleFit(selectedDate, userData.googleFitTokens!)}
+                  disabled={isSyncingFit}
+                  className="px-2.5 py-1.5 bg-white hover:bg-slate-100 rounded border border-slate-200 text-slate-600 font-bold text-[10px] transition-colors flex items-center gap-1 disabled:opacity-50"
+                  title="Sincronizar ahora"
+                >
+                  {isSyncingFit ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-orange-500" />
+                  ) : (
+                    <span>🔄</span>
+                  )}
+                  <span>Sincronizar</span>
+                </button>
+                <button
+                  onClick={disconnectGoogleFit}
+                  className="px-2 py-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded text-[10px] font-bold transition-colors"
+                >
+                  Desconectar
+                </button>
               </div>
             </div>
-            <div className="flex gap-2">
-              <button
-                onClick={() => syncGoogleFit(selectedDate, userData.googleFitTokens!)}
-                disabled={isSyncingFit}
-                className="px-2.5 py-1.5 bg-white hover:bg-slate-100 rounded border border-slate-200 text-slate-600 font-bold text-[10px] transition-colors flex items-center gap-1 disabled:opacity-50"
-                title="Sincronizar ahora"
-              >
-                {isSyncingFit ? (
-                  <Loader2 className="w-3 h-3 animate-spin text-orange-500" />
-                ) : (
-                  <span>🔄</span>
-                )}
-                <span>Sincronizar</span>
-              </button>
-              <button
-                onClick={disconnectGoogleFit}
-                className="px-2 py-1 text-slate-400 hover:text-rose-500 hover:bg-rose-50 rounded text-[10px] font-bold transition-colors"
-              >
-                Desconectar
-              </button>
-            </div>
+            {googleFitDebug && (
+              <div className="text-[9px] font-mono bg-slate-900 text-slate-300 p-3 rounded-lg overflow-x-auto max-h-48 border border-slate-800">
+                <div className="font-bold text-[10px] text-orange-400 mb-1 flex justify-between items-center">
+                  <span>RESPUESTA API (DEBUG):</span>
+                  <button 
+                    onClick={() => setGoogleFitDebug(null)}
+                    className="text-slate-500 hover:text-white"
+                  >
+                    cerrar
+                  </button>
+                </div>
+                <pre className="whitespace-pre-wrap">{googleFitDebug}</pre>
+              </div>
+            )}
           </div>
         ) : (
           <div className="space-y-3">
             <p className="text-xs text-slate-600 leading-relaxed">
-              Sincroniza los datos de tus pasos y entrenamientos para ajustar tu meta calórica diaria automáticamente y comer más cuando gastas energía.
+              Sincroniza los datos de tus pasos y entrenamientos de Google Fit para ajustar tu meta calórica diaria automáticamente y comer más cuando gastas energía.
             </p>
             <button
               onClick={connectGoogleFit}

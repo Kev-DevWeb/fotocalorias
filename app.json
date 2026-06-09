@@ -1,0 +1,12 @@
+{
+  "expo": {
+    "extra": {
+      "eas": {
+        "projectId": "469c05f2-dc7e-47da-9060-c2bc761dc763"
+      }
+    },
+    "android": {
+      "package": "com.gatoestiradivoro.fotocalorias"
+    }
+  }
+}

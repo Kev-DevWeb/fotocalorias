@@ -12,10 +12,11 @@ export async function POST(request: NextRequest) {
     const clientSecret = process.env.GOOGLE_CLIENT_SECRET;
 
     if (!clientID || !clientSecret) {
-      return NextResponse.json({ error: 'Configuración de OAuth incompleta en el servidor' }, { status: 500 });
+      return NextResponse.json({ error: 'Configuración de servidor faltante para OAuth' }, { status: 500 });
     }
 
-    const response = await fetch('https://oauth2.googleapis.com/token', {
+    // Petición a Google OAuth 2.0 para refrescar el token
+    const tokenResponse = await fetch('https://oauth2.googleapis.com/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
@@ -26,22 +27,29 @@ export async function POST(request: NextRequest) {
       }),
     });
 
-    if (!response.ok) {
-      const errorData = await response.json();
+    if (!tokenResponse.ok) {
+      const errorData = await tokenResponse.json();
       throw new Error(errorData.error_description || errorData.error || 'Error al refrescar token');
     }
 
-    const data = await response.json();
+    const data = await tokenResponse.json();
+
+    // Calcular la fecha exacta de expiración
     const expiresAt = Date.now() + (data.expires_in * 1000);
 
     return NextResponse.json({
       accessToken: data.access_token,
-      expiresAt: expiresAt
+      // Si Google no retorna un nuevo refresh token, conservamos el actual
+      refreshToken: data.refresh_token || refreshToken,
+      expiresAt,
     });
 
   } catch (err: any) {
-    console.error('❌ Error al refrescar token Google Fit:', err);
-    return NextResponse.json({ error: err.message || 'Error interno del servidor' }, { status: 500 });
+    console.error('❌ Error al refrescar token de Google Fit:', err);
+    return NextResponse.json(
+      { error: err.message || 'Error interno del servidor al refrescar token' },
+      { status: 500 }
+    );
   }
 }
 

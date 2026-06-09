@@ -26,7 +26,7 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
         ]
       }],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0.0,
         topK: 32,
         topP: 1,
         maxOutputTokens: 2048,
@@ -54,7 +54,25 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
           },
           required: ["food_name", "calories", "protein", "carbs", "fat"]
         }
-      }
+      },
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE"
+        }
+      ]
     })
   });
 
@@ -82,7 +100,7 @@ export async function POST(request: NextRequest) {
       ? `\nCONTEXTO DE LA PORCIÓN DADO POR EL USUARIO: "${portionContext}". DEBES ajustar estrictamente tus estimaciones de gramos y calorías en base a este contexto visual/textual (por ejemplo, si dice que es la mitad, divide los valores a la mitad; si dice plato grande, auméntalos proporcionalmente).\n` 
       : "";
 
-    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en texto plano (sin markdown, sin explicaciones):${contextInstruction}
+    const prompt = `Analiza esta imagen de comida y devuelve SOLO este JSON en texto plano (sin markdown, sin explicaciones). Todos los valores numéricos de calorías y macronutrientes deben ser números simples (enteros o flotantes con máximo 1 decimal, ej. 10 o 10.5). NO generes cadenas largas de ceros decimales repetidos.:${contextInstruction}
 {
   "food_name": "Nombre descriptivo de la comida",
   "calories": 250,
@@ -127,8 +145,13 @@ Si no hay comida: {"error": "No se detectó comida"}`;
     console.log('📝 Raw text extraído:', rawText);
 
     if (!rawText) {
-      console.error('❌ No se encontró texto en la respuesta. Estructura:', result);
-      return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
+      console.error('❌ No se encontró texto en la respuesta. Estructura:', JSON.stringify(result, null, 2));
+      const finishReason = result.candidates?.[0]?.finishReason;
+      let errorMsg = 'Gemini no devolvió texto';
+      if (finishReason && finishReason !== 'STOP') {
+        errorMsg = `Gemini bloqueó la respuesta (Motivo: ${finishReason})`;
+      }
+      return NextResponse.json({ error: errorMsg, details: result }, { status: 500 });
     }
 
     // 6. Limpieza y Validación Fuerte con Zod

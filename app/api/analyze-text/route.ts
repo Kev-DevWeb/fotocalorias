@@ -18,7 +18,7 @@ async function callGeminiAPI(model: string, promptText: string) {
         parts: [{ text: promptText }]
       }],
       generationConfig: {
-        temperature: 0.2,
+        temperature: 0.0,
         topK: 32,
         topP: 1,
         maxOutputTokens: 2048,
@@ -46,7 +46,25 @@ async function callGeminiAPI(model: string, promptText: string) {
           },
           required: ["food_name", "calories", "protein", "carbs", "fat"]
         }
-      }
+      },
+      safetySettings: [
+        {
+          category: "HARM_CATEGORY_HARASSMENT",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_HATE_SPEECH",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+          threshold: "BLOCK_NONE"
+        },
+        {
+          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+          threshold: "BLOCK_NONE"
+        }
+      ]
     })
   });
 }
@@ -74,7 +92,7 @@ export async function POST(request: NextRequest) {
 
     const prompt = `Eres un nutricionista experto. Analiza esta descripción de comida: "${description}"
 
-Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones.
+Estima las cantidades y calcula los valores nutricionales totales. Sé conservador en las estimaciones. Todos los valores numéricos de calorías y macronutrientes deben ser números simples (enteros o flotantes con máximo 1 decimal, ej. 10 o 10.5). NO generes cadenas largas de ceros decimales repetidos.
 
 Devuelve SOLO este JSON válido en texto plano (sin markdown ni explicaciones), usando comillas dobles para TODAS las propiedades y valores de texto:
 {
@@ -124,8 +142,13 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
     console.log('📝 Raw text extraído:', rawText);
 
     if (!rawText) {
-      console.error('❌ No se encontró texto en la respuesta');
-      return NextResponse.json({ error: 'Gemini no devolvió texto' }, { status: 500 });
+      console.error('❌ No se encontró texto en la respuesta. Estructura:', JSON.stringify(result, null, 2));
+      const finishReason = result.candidates?.[0]?.finishReason;
+      let errorMsg = 'Gemini no devolvió texto';
+      if (finishReason && finishReason !== 'STOP') {
+        errorMsg = `Gemini bloqueó la respuesta (Motivo: ${finishReason})`;
+      }
+      return NextResponse.json({ error: errorMsg, details: result }, { status: 500 });
     }
 
     // 6. Limpieza y Validación Fuerte con Zod

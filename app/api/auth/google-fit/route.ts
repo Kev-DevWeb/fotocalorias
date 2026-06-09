@@ -15,9 +15,11 @@ export async function GET(request: NextRequest) {
   const protocol = host.startsWith('localhost') ? 'http' : 'https';
   const redirectUri = `${protocol}://${host}/api/auth/google-fit/callback`;
 
-  // Scopes requeridos para leer actividad (calorías quemadas)
+  // Scopes requeridos para leer actividad (calorías quemadas) y escribir alimentos (nutrición)
   const scopes = [
-    'https://www.googleapis.com/auth/fitness.activity.read'
+    'https://www.googleapis.com/auth/fitness.activity.read',
+    'https://www.googleapis.com/auth/fitness.nutrition.write',
+    'https://www.googleapis.com/auth/fitness.nutrition.read'
   ].join(' ');
 
   // URL del consentimiento OAuth 2.0 de Google
