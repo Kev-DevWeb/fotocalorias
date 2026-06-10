@@ -29,7 +29,10 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
         temperature: 0.0,
         topK: 32,
         topP: 1,
-        maxOutputTokens: 2048,
+        maxOutputTokens: 8192,
+        thinkingConfig: {
+          thinkingLevel: "MINIMAL"
+        },
         responseMimeType: "application/json",
         responseSchema: {
           type: "OBJECT",
