@@ -4,8 +4,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_PRIMARY = 'gemini-3.5-flash';
-const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
+const MODEL_PRIMARY = 'gemini-2.5-flash';
+const MODEL_FALLBACK = 'gemini-1.5-flash';
 
 // Validación de seguridad
 const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
@@ -35,9 +35,6 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
           topK: 32,
           topP: 1,
           maxOutputTokens: 8192,
-          thinkingConfig: {
-            thinkingLevel: "MINIMAL"
-          },
           responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",

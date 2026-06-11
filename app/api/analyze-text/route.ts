@@ -4,8 +4,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos usando la línea activa soportada
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_PRIMARY = 'gemini-3.5-flash';
-const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
+const MODEL_PRIMARY = 'gemini-2.5-flash';
+const MODEL_FALLBACK = 'gemini-1.5-flash';
 
 async function callGeminiAPI(model: string, promptText: string, timeoutMs = 8000) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -27,9 +27,6 @@ async function callGeminiAPI(model: string, promptText: string, timeoutMs = 8000
           topK: 32,
           topP: 1,
           maxOutputTokens: 8192,
-          thinkingConfig: {
-            thinkingLevel: "MINIMAL"
-          },
           responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
