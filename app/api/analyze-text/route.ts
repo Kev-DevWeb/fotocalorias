@@ -4,8 +4,8 @@ import { nutritionDataSchema } from '@/lib/schemas';
 
 // Configuración de modelos usando la línea activa soportada
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const MODEL_PRIMARY = 'gemini-2.5-flash';
-const MODEL_FALLBACK = 'gemini-1.5-flash';
+const MODEL_PRIMARY = 'gemini-3.5-flash';
+const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 
 async function callGeminiAPI(model: string, promptText: string, timeoutMs = 8000) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
@@ -23,10 +23,10 @@ async function callGeminiAPI(model: string, promptText: string, timeoutMs = 8000
           parts: [{ text: promptText }]
         }],
         generationConfig: {
-          temperature: 0.0,
-          topK: 32,
-          topP: 1,
           maxOutputTokens: 8192,
+          thinkingConfig: {
+            thinkingLevel: "MINIMAL"
+          },
           responseMimeType: "application/json",
           responseSchema: {
             type: "OBJECT",
@@ -122,59 +122,48 @@ Devuelve SOLO este JSON válido en texto plano (sin markdown ni explicaciones), 
 
 Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún alimento"}`;
 
-    let response: Response;
+    let response: Response | undefined;
     let usedModel = MODEL_PRIMARY;
+    let success = false;
 
-    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash) con 10s de timeout
+    // 3. INTENTO 1: Usar modelo principal (gemini-1.5-flash) con 10s de timeout
     try {
       console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
       console.log(`✉️ Prompt enviado:\n${prompt}`);
       response = await callGeminiAPI(MODEL_PRIMARY, prompt, 10000);
+      if (response.ok) {
+        success = true;
+      } else {
+        console.warn(`⚠️ Error en ${MODEL_PRIMARY} (Status: ${response.status}). Probando fallback...`);
+      }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      const isTimeout = err.name === 'AbortError' || err.message.includes('aborted');
-      console.warn(`⚠️ Error o Timeout en ${MODEL_PRIMARY}:`, err.message);
-      
-      if (isTimeout) {
-        console.warn(`⚡ Intentando fallback inmediato con ${MODEL_FALLBACK} por timeout...`);
-      } else {
-        console.warn(`⚡ Intentando fallback inmediato con ${MODEL_FALLBACK}...`);
-      }
-      
+      console.warn(`⚠️ Excepción en ${MODEL_PRIMARY}:`, err.message);
+    }
+
+    // 4. INTENTO 2: Fallback (si el primero falló por cualquier motivo: error, timeout, 404, 429, etc.)
+    if (!success) {
       try {
         usedModel = MODEL_FALLBACK;
+        console.log(`⚡ Intentando fallback con ${MODEL_FALLBACK}...`);
         response = await callGeminiAPI(MODEL_FALLBACK, prompt, 10000);
+        if (response.ok) {
+          success = true;
+        }
       } catch (fallbackError) {
         const fErr = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
         console.error(`❌ Ambos modelos fallaron o excedieron el tiempo de espera. Fallback error:`, fErr.message);
-        return NextResponse.json({ 
-          error: 'El servicio de IA de Google no respondió a tiempo. Por favor, intenta de nuevo o escribe los detalles manualmente.' 
-        }, { status: 504 });
       }
     }
 
-    // 4. Lógica de Fallback de Cuota (Si responde pero falla por cuota 429)
-    if (response.status === 429) {
-      console.warn(`⚠️ Cuota de ${MODEL_PRIMARY} excedida (429). Cambiando a ${MODEL_FALLBACK} ⚡...`);
-      try {
-        response = await callGeminiAPI(MODEL_FALLBACK, prompt, 10000);
-        usedModel = MODEL_FALLBACK;
-      } catch (fallbackError) {
-        const fErr = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
-        console.error(`❌ Error en fallback ${MODEL_FALLBACK} tras cuota excedida:`, fErr.message);
-        return NextResponse.json({ 
-          error: 'El servicio de IA de Google está saturado (límite de cuota). Por favor, intenta de nuevo en unos momentos.' 
-        }, { status: 429 });
-      }
-    }
-
-    // Manejo de otros errores HTTP
-    if (!response.ok) {
-      const errorText = await response.text();
-      console.error(`❌ Error en ${usedModel} (Status: ${response.status}):`, errorText);
+    // 5. Manejo de fallos en ambos intentos
+    if (!success || !response) {
+      const status = response ? response.status : 504;
+      const errorText = response ? await response.text() : 'Timeout o error de red';
+      console.error(`❌ Error final en ${usedModel}:`, errorText);
       return NextResponse.json({ 
-        error: `El servicio de análisis (Gemini) reportó un error (${response.status}). Intenta de nuevo.` 
-      }, { status: response.status });
+        error: `El servicio de análisis de alimentos (Gemini) reportó un error (${status}). Por favor, intenta de nuevo o escribe los detalles manualmente.` 
+      }, { status });
     }
 
     // 5. Procesar Respuesta
