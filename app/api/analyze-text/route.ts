@@ -91,7 +91,7 @@ async function callGeminiAPIWithRetry(
   maxRetries = 3
 ) {
   let attempt = 0;
-  let delay = 500;
+  let delay = 300;
 
   while (true) {
     try {
@@ -166,11 +166,11 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
     let usedModel = MODEL_PRIMARY;
     let success = false;
 
-    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash) con reintentos y 4s timeout por intento
+    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash) con reintentos y 3.5s timeout por intento (máx 2 intentos)
     try {
       console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
       console.log(`✉️ Prompt enviado:\n${prompt}`);
-      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, prompt, true, 4000, 3);
+      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, prompt, true, 3500, 2);
       if (response.ok) {
         success = true;
       } else {
@@ -186,7 +186,8 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
       try {
         usedModel = MODEL_FALLBACK;
         console.log(`⚡ Intentando fallback con ${MODEL_FALLBACK}...`);
-        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, prompt, false, 4000, 3);
+        // Para fallback, solo hacemos 1 intento de 2.0s sin reintento para evitar exceder los 10s de Vercel
+        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, prompt, false, 2000, 1);
         if (response.ok) {
           success = true;
         }
