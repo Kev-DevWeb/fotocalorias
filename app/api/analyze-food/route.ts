@@ -12,11 +12,45 @@ const MAX_IMAGE_SIZE = 10 * 1024 * 1024; // 10MB
 const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif'];
 
 // Función auxiliar para llamar a Gemini (reutilizable para el fallback)
-async function callGeminiAPI(model: string, imageBase64: string, mimeType: string, promptText: string, timeoutMs = 8000) {
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+async function callGeminiAPI(model: string, imageBase64: string, mimeType: string, promptText: string, enableThinking: boolean, timeoutMs = 8000) {
+  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens: 8192,
+    responseMimeType: "application/json",
+    responseSchema: {
+      type: "OBJECT",
+      properties: {
+        food_name: { type: "STRING" },
+        calories: { type: "INTEGER" },
+        protein: { type: "INTEGER" },
+        carbs: { type: "INTEGER" },
+        fat: { type: "INTEGER" },
+        sugar: { type: "INTEGER" },
+        fiber: { type: "INTEGER" },
+        sodium: { type: "INTEGER" },
+        confidence: { type: "STRING" },
+        detected_items: { 
+          type: "ARRAY", 
+          items: { type: "STRING" } 
+        },
+        portion_note: { type: "STRING" },
+        nova_group: { type: "INTEGER" },
+        nova_reason: { type: "STRING" },
+        error: { type: "STRING" }
+      },
+      required: ["food_name", "calories", "protein", "carbs", "fat"]
+    }
+  };
+
+  if (enableThinking) {
+    generationConfig.thinkingConfig = {
+      thinkingLevel: "MINIMAL"
+    };
+  }
 
   try {
     const response = await fetch(url, {
@@ -30,36 +64,7 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
             { inlineData: { mimeType: mimeType, data: imageBase64 } }
           ]
         }],
-        generationConfig: {
-          maxOutputTokens: 8192,
-          thinkingConfig: {
-            thinkingLevel: "MINIMAL"
-          },
-          responseMimeType: "application/json",
-          responseSchema: {
-            type: "OBJECT",
-            properties: {
-              food_name: { type: "STRING" },
-              calories: { type: "INTEGER" },
-              protein: { type: "INTEGER" },
-              carbs: { type: "INTEGER" },
-              fat: { type: "INTEGER" },
-              sugar: { type: "INTEGER" },
-              fiber: { type: "INTEGER" },
-              sodium: { type: "INTEGER" },
-              confidence: { type: "STRING" },
-              detected_items: { 
-                type: "ARRAY", 
-                items: { type: "STRING" } 
-              },
-              portion_note: { type: "STRING" },
-              nova_group: { type: "INTEGER" },
-              nova_reason: { type: "STRING" },
-              error: { type: "STRING" }
-            },
-            required: ["food_name", "calories", "protein", "carbs", "fat"]
-          }
-        },
+        generationConfig,
         safetySettings: [
           {
             category: "HARM_CATEGORY_HARASSMENT",
@@ -87,20 +92,30 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
   }
 }
 
-async function callGeminiAPIWithRetry(model: string, imageBase64: string, mimeType: string, promptText: string, timeoutMs = 4000, maxRetries = 2) {
+async function callGeminiAPIWithRetry(
+  model: string, 
+  imageBase64: string, 
+  mimeType: string, 
+  promptText: string, 
+  enableThinkingByDefault = true, 
+  timeoutMs = 4000, 
+  maxRetries = 3
+) {
   let attempt = 0;
-  let delay = 300;
+  let delay = 500;
 
   while (true) {
     try {
       attempt++;
-      const response = await callGeminiAPI(model, imageBase64, mimeType, promptText, timeoutMs);
+      // Si estamos en un reintento (intento > 1), desactivamos thinking para evitar sobrecargas de razonamiento
+      const enableThinking = attempt === 1 ? enableThinkingByDefault : false;
+      const response = await callGeminiAPI(model, imageBase64, mimeType, promptText, enableThinking, timeoutMs);
       
       if (response.ok || (response.status !== 503 && response.status !== 429) || attempt >= maxRetries) {
         return response;
       }
       
-      console.warn(`⚠️ Intento ${attempt} de imagen falló con ${response.status} para ${model}. Reintentando en ${delay}ms...`);
+      console.warn(`⚠️ Intento ${attempt} de imagen falló con ${response.status} para ${model}. Reintentando sin thinking en ${delay}ms...`);
     } catch (error) {
       if (attempt >= maxRetries) {
         throw error;
@@ -161,7 +176,7 @@ Si no hay comida: {"error": "No se detectó comida"}`;
     try {
       console.log(`🤖 Intentando con ${MODEL_PRIMARY}...`);
       console.log(`✉️ Prompt enviado:\n${prompt}`);
-      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, image, mimeType, prompt, 4000, 2);
+      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, image, mimeType, prompt, true, 4000, 3);
       if (response.ok) {
         success = true;
       } else {
@@ -177,7 +192,7 @@ Si no hay comida: {"error": "No se detectó comida"}`;
       try {
         usedModel = MODEL_FALLBACK;
         console.log(`⚡ Intentando fallback con ${MODEL_FALLBACK}...`);
-        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, image, mimeType, prompt, 4000, 2);
+        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, image, mimeType, prompt, false, 4000, 3);
         if (response.ok) {
           success = true;
         }
