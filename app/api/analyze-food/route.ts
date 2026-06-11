@@ -13,7 +13,7 @@ const ALLOWED_MIME_TYPES = ['image/jpeg', 'image/png', 'image/webp', 'image/heic
 
 // Función auxiliar para llamar a Gemini (reutilizable para el fallback)
 async function callGeminiAPI(model: string, imageBase64: string, mimeType: string, promptText: string, enableThinking: boolean, timeoutMs = 8000) {
-  const url = `https://generativelanguage.googleapis.com/v1/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -22,25 +22,25 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
     maxOutputTokens: 8192,
     responseMimeType: "application/json",
     responseSchema: {
-      type: "OBJECT",
+      type: "object",
       properties: {
-        food_name: { type: "STRING" },
-        calories: { type: "INTEGER" },
-        protein: { type: "INTEGER" },
-        carbs: { type: "INTEGER" },
-        fat: { type: "INTEGER" },
-        sugar: { type: "INTEGER" },
-        fiber: { type: "INTEGER" },
-        sodium: { type: "INTEGER" },
-        confidence: { type: "STRING" },
+        food_name: { type: "string" },
+        calories: { type: "integer" },
+        protein: { type: "integer" },
+        carbs: { type: "integer" },
+        fat: { type: "integer" },
+        sugar: { type: "integer" },
+        fiber: { type: "integer" },
+        sodium: { type: "integer" },
+        confidence: { type: "string" },
         detected_items: { 
-          type: "ARRAY", 
-          items: { type: "STRING" } 
+          type: "array", 
+          items: { type: "string" } 
         },
-        portion_note: { type: "STRING" },
-        nova_group: { type: "INTEGER" },
-        nova_reason: { type: "STRING" },
-        error: { type: "STRING" }
+        portion_note: { type: "string" },
+        nova_group: { type: "integer" },
+        nova_reason: { type: "string" },
+        error: { type: "string" }
       },
       required: ["food_name", "calories", "protein", "carbs", "fat"]
     }
