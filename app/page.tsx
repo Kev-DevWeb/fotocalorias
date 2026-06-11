@@ -1478,21 +1478,25 @@ export default function Home() {
 
     setIsAnalyzingText(true);
     setShowGuestTextInputModal(false);
+    setIsGuestAnalyzing(true);
+    setGuestPreviewImage('text');
 
     try {
       const result = await analyzeTextWithGemini(foodDescription.trim(), checkRateLimit);
       
       if (result && !result.error) {
         setGuestAnalysisResult(result);
-        setGuestPreviewImage(null);
       } else {
         alert("No se pudo identificar el alimento. Intenta ser más específico.");
+        setGuestPreviewImage(null);
       }
     } catch (error: any) {
       console.error('❌ Error:', error);
       alert(error.message || "Error al analizar el texto. Intenta de nuevo.");
+      setGuestPreviewImage(null);
     } finally {
       setIsAnalyzingText(false);
+      setIsGuestAnalyzing(false);
       setFoodDescription('');
     }
   };
@@ -1656,93 +1660,101 @@ export default function Home() {
           {guestPreviewImage && (
             <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
               <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-                <div className="relative h-40 sm:h-48 bg-slate-100 flex-shrink-0">
-                  <img src={guestPreviewImage} alt="Preview" className="w-full h-full object-cover" />
-                  <button 
-                    onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
-                    className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70"
-                  >
-                    <X className="w-5 h-5" />
-                  </button>
-                </div>
-                <div className="p-5 sm:p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
+                {guestPreviewImage !== 'text' ? (
+                  <div className="relative h-40 sm:h-48 bg-slate-100 flex-shrink-0">
+                    <img src={guestPreviewImage} alt="Preview" className="w-full h-full object-cover" />
+                    <button 
+                      onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                      className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                ) : (
+                  <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                    <h3 className="font-bold text-slate-800">Análisis de Comida</h3>
+                    <button 
+                      onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                      className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                    >
+                      <X className="w-5 h-5" />
+                    </button>
+                  </div>
+                )}
+                <div className="p-5 sm:p-6 flex-1 overflow-y-auto min-h-0 space-y-4">
                   {isGuestAnalyzing ? (
                     <div className="text-center py-8 space-y-4 my-auto">
                       <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto" />
                       <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
                     </div>
                   ) : guestAnalysisResult ? (
-                    <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                      <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-                        <div>
-                          <h3 className="text-xl font-bold text-slate-900">{guestAnalysisResult.food_name}</h3>
-                          <p className="text-orange-500 font-bold text-lg">{guestAnalysisResult.calories} kcal</p>
-                          {guestAnalysisResult.confidence && (
-                            <p className="text-xs text-slate-500">Confianza: {guestAnalysisResult.confidence}</p>
+                    <div className="space-y-4">
+                      <div>
+                        <h3 className="text-xl font-bold text-slate-900">{guestAnalysisResult.food_name}</h3>
+                        <p className="text-orange-500 font-bold text-lg">{guestAnalysisResult.calories} kcal</p>
+                        {guestAnalysisResult.confidence && (
+                          <p className="text-xs text-slate-500">Confianza: {guestAnalysisResult.confidence}</p>
+                        )}
+                      </div>
+                      
+                      {/* Clasificación NOVA */}
+                      {guestAnalysisResult.nova_group && (
+                        <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                          guestAnalysisResult.nova_group === 1 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
+                          guestAnalysisResult.nova_group === 2 ? 'bg-slate-50 border-slate-200 text-slate-800' :
+                          guestAnalysisResult.nova_group === 3 ? 'bg-amber-50 border-amber-200 text-amber-900' :
+                          'bg-rose-50 border-rose-200 text-rose-900'
+                        }`}>
+                          <div className="font-bold flex items-center gap-1.5 text-sm mb-0.5">
+                            <span>
+                              {guestAnalysisResult.nova_group === 1 ? '🟢' :
+                               guestAnalysisResult.nova_group === 2 ? '⚪' :
+                               guestAnalysisResult.nova_group === 3 ? '🟡' :
+                               '🔴'}
+                            </span>
+                            Grupo NOVA {guestAnalysisResult.nova_group} - {
+                              guestAnalysisResult.nova_group === 1 ? 'Mínimamente procesado' :
+                              guestAnalysisResult.nova_group === 2 ? 'Ingrediente culinario' :
+                              guestAnalysisResult.nova_group === 3 ? 'Alimento procesado' :
+                              'Ultraprocesado'
+                            }
+                          </div>
+                          {guestAnalysisResult.nova_reason && (
+                            <p className="opacity-95">{guestAnalysisResult.nova_reason}</p>
                           )}
                         </div>
-                        
-                        {/* Clasificación NOVA */}
-                        {guestAnalysisResult.nova_group && (
-                          <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
-                            guestAnalysisResult.nova_group === 1 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
-                            guestAnalysisResult.nova_group === 2 ? 'bg-slate-50 border-slate-200 text-slate-800' :
-                            guestAnalysisResult.nova_group === 3 ? 'bg-amber-50 border-amber-200 text-amber-900' :
-                            'bg-rose-50 border-rose-200 text-rose-900'
-                          }`}>
-                            <div className="font-bold flex items-center gap-1.5 text-sm mb-0.5">
-                              <span>
-                                {guestAnalysisResult.nova_group === 1 ? '🟢' :
-                                 guestAnalysisResult.nova_group === 2 ? '⚪' :
-                                 guestAnalysisResult.nova_group === 3 ? '🟡' :
-                                 '🔴'}
-                              </span>
-                              Grupo NOVA {guestAnalysisResult.nova_group} - {
-                                guestAnalysisResult.nova_group === 1 ? 'Mínimamente procesado' :
-                                guestAnalysisResult.nova_group === 2 ? 'Ingrediente culinario' :
-                                guestAnalysisResult.nova_group === 3 ? 'Alimento procesado' :
-                                'Ultraprocesado'
-                              }
-                            </div>
-                            {guestAnalysisResult.nova_reason && (
-                              <p className="opacity-95">{guestAnalysisResult.nova_reason}</p>
-                            )}
-                          </div>
-                        )}
-                        
-                        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                          <div className="bg-blue-50 rounded-lg p-1.5 sm:p-2 text-center">
-                            <div className="text-[10px] sm:text-xs text-blue-600 font-semibold truncate">Proteína</div>
-                            <div className="text-base sm:text-lg font-bold text-blue-700">{guestAnalysisResult.protein}g</div>
-                          </div>
-                          <div className="bg-green-50 rounded-lg p-1.5 sm:p-2 text-center">
-                            <div className="text-[10px] sm:text-xs text-green-600 font-semibold truncate">Carbos</div>
-                            <div className="text-base sm:text-lg font-bold text-green-700">{guestAnalysisResult.carbs}g</div>
-                          </div>
-                          <div className="bg-yellow-50 rounded-lg p-1.5 sm:p-2 text-center">
-                            <div className="text-[10px] sm:text-xs text-yellow-600 font-semibold truncate">Grasas</div>
-                            <div className="text-base sm:text-lg font-bold text-yellow-700">{guestAnalysisResult.fat}g</div>
-                          </div>
+                      )}
+                      
+                      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                        <div className="bg-blue-50 rounded-lg p-1.5 sm:p-2 text-center">
+                          <div className="text-[10px] sm:text-xs text-blue-600 font-semibold truncate">Proteína</div>
+                          <div className="text-base sm:text-lg font-bold text-blue-700">{guestAnalysisResult.protein}g</div>
                         </div>
-                        <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                          <div className="bg-pink-50 rounded-lg p-1.5 sm:p-2 text-center">
-                            <div className="text-[10px] sm:text-xs text-pink-600 font-semibold truncate">Azúcar</div>
-                            <div className="text-base sm:text-lg font-bold text-pink-700">{guestAnalysisResult.sugar || 0}g</div>
-                          </div>
-                          <div className="bg-purple-50 rounded-lg p-1.5 sm:p-2 text-center">
-                            <div className="text-[10px] sm:text-xs text-purple-600 font-semibold truncate">Fibra</div>
-                            <div className="text-base sm:text-lg font-bold text-purple-700">{guestAnalysisResult.fiber || 0}g</div>
-                          </div>
-                          <div className="bg-red-50 rounded-lg p-1.5 sm:p-2 text-center">
-                            <div className="text-[10px] sm:text-xs text-red-600 font-semibold truncate">Sodio</div>
-                            <div className="text-base sm:text-lg font-bold text-red-700">{guestAnalysisResult.sodium || 0}mg</div>
-                          </div>
+                        <div className="bg-green-50 rounded-lg p-1.5 sm:p-2 text-center">
+                          <div className="text-[10px] sm:text-xs text-green-600 font-semibold truncate">Carbos</div>
+                          <div className="text-base sm:text-lg font-bold text-green-700">{guestAnalysisResult.carbs}g</div>
                         </div>
-                        <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs leading-relaxed text-orange-700">
-                          💡 <strong>Regístrate</strong> para guardar tus comidas y ver tu progreso diario
+                        <div className="bg-yellow-50 rounded-lg p-1.5 sm:p-2 text-center">
+                          <div className="text-[10px] sm:text-xs text-yellow-600 font-semibold truncate">Grasas</div>
+                          <div className="text-base sm:text-lg font-bold text-yellow-700">{guestAnalysisResult.fat}g</div>
+                        </div>
+                        <div className="bg-pink-50 rounded-lg p-1.5 sm:p-2 text-center">
+                          <div className="text-[10px] sm:text-xs text-pink-600 font-semibold truncate">Azúcar</div>
+                          <div className="text-base sm:text-lg font-bold text-pink-700">{guestAnalysisResult.sugar || 0}g</div>
+                        </div>
+                        <div className="bg-purple-50 rounded-lg p-1.5 sm:p-2 text-center">
+                          <div className="text-[10px] sm:text-xs text-purple-600 font-semibold truncate">Fibra</div>
+                          <div className="text-base sm:text-lg font-bold text-purple-700">{guestAnalysisResult.fiber || 0}g</div>
+                        </div>
+                        <div className="bg-red-50 rounded-lg p-1.5 sm:p-2 text-center">
+                          <div className="text-[10px] sm:text-xs text-red-600 font-semibold truncate">Sodio</div>
+                          <div className="text-base sm:text-lg font-bold text-red-700">{guestAnalysisResult.sodium || 0}mg</div>
                         </div>
                       </div>
-                      <div className="pt-3 border-t border-slate-100 mt-2 flex-shrink-0">
+                      <div className="bg-orange-50 border border-orange-200 rounded-lg p-3 text-xs leading-relaxed text-orange-700">
+                        💡 <strong>Regístrate</strong> para guardar tus comidas y ver tu progreso diario
+                      </div>
+                      <div className="pt-3 border-t border-slate-100 mt-2">
                         <Button 
                           onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
                           variant="primary" 
@@ -2025,107 +2037,116 @@ export default function Home() {
         {previewImage && (
           <div className="fixed inset-0 bg-black/80 z-50 flex flex-col items-center justify-center p-4 backdrop-blur-sm animate-in fade-in duration-200">
             <div className="bg-white rounded-2xl w-full max-w-sm max-h-[90vh] flex flex-col overflow-hidden shadow-2xl">
-              <div className="relative h-40 sm:h-48 bg-slate-100 flex-shrink-0">
-                <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
-                <button 
-                  onClick={() => { setPreviewImage(null); setAnalysisResult(null); }}
-                  className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70"
-                >
-                  <X className="w-5 h-5" />
-                </button>
-              </div>
-              <div className="p-5 sm:p-6 flex-1 flex flex-col min-h-0 overflow-hidden">
+              {previewImage !== 'text' ? (
+                <div className="relative h-40 sm:h-48 bg-slate-100 flex-shrink-0">
+                  <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
+                  <button 
+                    onClick={() => { setPreviewImage(null); setAnalysisResult(null); }}
+                    className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              ) : (
+                <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+                  <h3 className="font-bold text-slate-800">Análisis de Comida</h3>
+                  <button 
+                    onClick={() => { setPreviewImage(null); setAnalysisResult(null); }}
+                    className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
+                  >
+                    <X className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+              <div className="p-5 sm:p-6 flex-1 overflow-y-auto min-h-0 space-y-4">
                 {isAnalyzing ? (
                   <div className="text-center py-8 space-y-4 my-auto">
                     <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto" />
                     <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
                   </div>
                 ) : analysisResult ? (
-                  <div className="flex-1 flex flex-col min-h-0 overflow-hidden">
-                    <div className="flex-1 overflow-y-auto pr-1 space-y-4">
-                      <div>
-                        <h3 className="text-xl font-bold text-slate-900">{analysisResult.food_name}</h3>
-                        <p className="text-orange-500 font-bold text-lg">{analysisResult.calories} kcal</p>
-                        {analysisResult.confidence && (
-                          <p className="text-xs text-slate-500">Confianza: {analysisResult.confidence}</p>
+                  <div className="space-y-4">
+                    <div>
+                      <h3 className="text-xl font-bold text-slate-900">{analysisResult.food_name}</h3>
+                      <p className="text-orange-500 font-bold text-lg">{analysisResult.calories} kcal</p>
+                      {analysisResult.confidence && (
+                        <p className="text-xs text-slate-500">Confianza: {analysisResult.confidence}</p>
+                      )}
+                    </div>
+                    
+                    {/* Clasificación NOVA */}
+                    {analysisResult.nova_group && (
+                      <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
+                        analysisResult.nova_group === 1 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
+                        analysisResult.nova_group === 2 ? 'bg-slate-50 border-slate-200 text-slate-800' :
+                        analysisResult.nova_group === 3 ? 'bg-amber-50 border-amber-200 text-amber-900' :
+                        'bg-rose-50 border-rose-200 text-rose-900'
+                      }`}>
+                        <div className="font-bold flex items-center gap-1.5 text-sm mb-0.5">
+                          <span>
+                            {analysisResult.nova_group === 1 ? '🟢' :
+                             analysisResult.nova_group === 2 ? '⚪' :
+                             analysisResult.nova_group === 3 ? '🟡' :
+                             '🔴'}
+                          </span>
+                          Grupo NOVA {analysisResult.nova_group} - {
+                            analysisResult.nova_group === 1 ? 'Mínimamente procesado' :
+                            analysisResult.nova_group === 2 ? 'Ingrediente culinario' :
+                            analysisResult.nova_group === 3 ? 'Alimento procesado' :
+                            'Ultraprocesado'
+                          }
+                        </div>
+                        {analysisResult.nova_reason && (
+                          <p className="opacity-95">{analysisResult.nova_reason}</p>
                         )}
                       </div>
-                      
-                      {/* Clasificación NOVA */}
-                      {analysisResult.nova_group && (
-                        <div className={`p-3 rounded-xl border text-xs leading-relaxed ${
-                          analysisResult.nova_group === 1 ? 'bg-emerald-50 border-emerald-200 text-emerald-900' :
-                          analysisResult.nova_group === 2 ? 'bg-slate-50 border-slate-200 text-slate-800' :
-                          analysisResult.nova_group === 3 ? 'bg-amber-50 border-amber-200 text-amber-900' :
-                          'bg-rose-50 border-rose-200 text-rose-900'
-                        }`}>
-                          <div className="font-bold flex items-center gap-1.5 text-sm mb-0.5">
-                            <span>
-                              {analysisResult.nova_group === 1 ? '🟢' :
-                               analysisResult.nova_group === 2 ? '⚪' :
-                               analysisResult.nova_group === 3 ? '🟡' :
-                               '🔴'}
-                            </span>
-                            Grupo NOVA {analysisResult.nova_group} - {
-                              analysisResult.nova_group === 1 ? 'Mínimamente procesado' :
-                              analysisResult.nova_group === 2 ? 'Ingrediente culinario' :
-                              analysisResult.nova_group === 3 ? 'Alimento procesado' :
-                              'Ultraprocesado'
-                            }
-                          </div>
-                          {analysisResult.nova_reason && (
-                            <p className="opacity-95">{analysisResult.nova_reason}</p>
-                          )}
-                        </div>
-                      )}
+                    )}
 
-                      {/* Selector de Categoría (Pacing) */}
-                      <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
-                        <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
-                          🍳 Categoría de Comida
-                        </label>
-                        <select 
-                          value={selectedMealType} 
-                          onChange={(e) => setSelectedMealType(e.target.value as any)}
-                          className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
-                        >
-                          <option value="desayuno">🍳 Desayuno</option>
-                          <option value="almuerzo">🍗 Almuerzo</option>
-                          <option value="cena">🌙 Cena</option>
-                          <option value="snack">🍎 Snack / Colación</option>
-                        </select>
-                      </div>
+                    {/* Selector de Categoría (Pacing) */}
+                    <div className="bg-slate-50 p-3 rounded-xl border border-slate-100">
+                      <label className="block text-xs font-bold text-slate-600 uppercase tracking-wider mb-1.5">
+                        🍳 Categoría de Comida
+                      </label>
+                      <select 
+                        value={selectedMealType} 
+                        onChange={(e) => setSelectedMealType(e.target.value as any)}
+                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-orange-500 text-slate-900"
+                      >
+                        <option value="desayuno">🍳 Desayuno</option>
+                        <option value="almuerzo">🍗 Almuerzo</option>
+                        <option value="cena">🌙 Cena</option>
+                        <option value="snack">🍎 Snack / Colación</option>
+                      </select>
+                    </div>
 
-                      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                        <div className="bg-blue-50 rounded-lg p-1.5 sm:p-2 text-center">
-                          <div className="text-[10px] sm:text-xs text-blue-600 font-semibold truncate">Proteína</div>
-                          <div className="text-base sm:text-lg font-bold text-blue-700">{analysisResult.protein}g</div>
-                        </div>
-                        <div className="bg-green-50 rounded-lg p-1.5 sm:p-2 text-center">
-                          <div className="text-[10px] sm:text-xs text-green-600 font-semibold truncate">Carbos</div>
-                          <div className="text-base sm:text-lg font-bold text-green-700">{analysisResult.carbs}g</div>
-                        </div>
-                        <div className="bg-yellow-50 rounded-lg p-1.5 sm:p-2 text-center">
-                          <div className="text-[10px] sm:text-xs text-yellow-600 font-semibold truncate">Grasas</div>
-                          <div className="text-base sm:text-lg font-bold text-yellow-700">{analysisResult.fat}g</div>
-                        </div>
+                    <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
+                      <div className="bg-blue-50 rounded-lg p-1.5 sm:p-2 text-center">
+                        <div className="text-[10px] sm:text-xs text-blue-600 font-semibold truncate">Proteína</div>
+                        <div className="text-base sm:text-lg font-bold text-blue-700">{analysisResult.protein}g</div>
                       </div>
-                      <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
-                        <div className="bg-pink-50 rounded-lg p-1.5 sm:p-2 text-center">
-                          <div className="text-[10px] sm:text-xs text-pink-600 font-semibold truncate">Azúcar</div>
-                          <div className="text-base sm:text-lg font-bold text-pink-700">{analysisResult.sugar || 0}g</div>
-                        </div>
-                        <div className="bg-purple-50 rounded-lg p-1.5 sm:p-2 text-center">
-                          <div className="text-[10px] sm:text-xs text-purple-600 font-semibold truncate">Fibra</div>
-                          <div className="text-base sm:text-lg font-bold text-purple-700">{analysisResult.fiber || 0}g</div>
-                        </div>
-                        <div className="bg-red-50 rounded-lg p-1.5 sm:p-2 text-center">
-                          <div className="text-[10px] sm:text-xs text-red-600 font-semibold truncate">Sodio</div>
-                          <div className="text-base sm:text-lg font-bold text-red-700">{analysisResult.sodium || 0}mg</div>
-                        </div>
+                      <div className="bg-green-50 rounded-lg p-1.5 sm:p-2 text-center">
+                        <div className="text-[10px] sm:text-xs text-green-600 font-semibold truncate">Carbos</div>
+                        <div className="text-base sm:text-lg font-bold text-green-700">{analysisResult.carbs}g</div>
+                      </div>
+                      <div className="bg-yellow-50 rounded-lg p-1.5 sm:p-2 text-center">
+                        <div className="text-[10px] sm:text-xs text-yellow-600 font-semibold truncate">Grasas</div>
+                        <div className="text-base sm:text-lg font-bold text-yellow-700">{analysisResult.fat}g</div>
+                      </div>
+                      <div className="bg-pink-50 rounded-lg p-1.5 sm:p-2 text-center">
+                        <div className="text-[10px] sm:text-xs text-pink-600 font-semibold truncate">Azúcar</div>
+                        <div className="text-base sm:text-lg font-bold text-pink-700">{analysisResult.sugar || 0}g</div>
+                      </div>
+                      <div className="bg-purple-50 rounded-lg p-1.5 sm:p-2 text-center">
+                        <div className="text-[10px] sm:text-xs text-purple-600 font-semibold truncate">Fibra</div>
+                        <div className="text-base sm:text-lg font-bold text-purple-700">{analysisResult.fiber || 0}g</div>
+                      </div>
+                      <div className="bg-red-50 rounded-lg p-1.5 sm:p-2 text-center">
+                        <div className="text-[10px] sm:text-xs text-red-600 font-semibold truncate">Sodio</div>
+                        <div className="text-base sm:text-lg font-bold text-red-700">{analysisResult.sodium || 0}mg</div>
                       </div>
                     </div>
-                    <div className="pt-3 border-t border-slate-100 mt-2 flex-shrink-0">
+
+                    <div className="pt-3 border-t border-slate-100 mt-2">
                       <Button onClick={saveLog} variant="primary" className="w-full">
                         <Check className="w-5 h-5" /> Confirmar y Guardar
                       </Button>
