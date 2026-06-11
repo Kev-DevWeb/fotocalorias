@@ -7,76 +7,85 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL_PRIMARY = 'gemini-3.5-flash';
 const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 
-async function callGeminiAPI(model: string, promptText: string) {
+async function callGeminiAPI(model: string, promptText: string, timeoutMs = 8000) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
-  return fetch(url, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      contents: [{
-        parts: [{ text: promptText }]
-      }],
-      generationConfig: {
-        temperature: 0.0,
-        topK: 32,
-        topP: 1,
-        maxOutputTokens: 8192,
-        thinkingConfig: {
-          thinkingLevel: "MINIMAL"
-        },
-        responseMimeType: "application/json",
-        responseSchema: {
-          type: "OBJECT",
-          properties: {
-            food_name: { type: "STRING" },
-            calories: { type: "INTEGER" },
-            protein: { type: "INTEGER" },
-            carbs: { type: "INTEGER" },
-            fat: { type: "INTEGER" },
-            sugar: { type: "INTEGER" },
-            fiber: { type: "INTEGER" },
-            sodium: { type: "INTEGER" },
-            confidence: { type: "STRING" },
-            detected_items: { 
-              type: "ARRAY", 
-              items: { type: "STRING" } 
-            },
-            portion_note: { type: "STRING" },
-            nova_group: { type: "INTEGER" },
-            nova_reason: { type: "STRING" },
-            error: { type: "STRING" }
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      signal: controller.signal,
+      body: JSON.stringify({
+        contents: [{
+          parts: [{ text: promptText }]
+        }],
+        generationConfig: {
+          temperature: 0.0,
+          topK: 32,
+          topP: 1,
+          maxOutputTokens: 8192,
+          thinkingConfig: {
+            thinkingLevel: "MINIMAL"
           },
-          required: ["food_name", "calories", "protein", "carbs", "fat"]
-        }
-      },
-      safetySettings: [
-        {
-          category: "HARM_CATEGORY_HARASSMENT",
-          threshold: "BLOCK_NONE"
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: "OBJECT",
+            properties: {
+              food_name: { type: "STRING" },
+              calories: { type: "INTEGER" },
+              protein: { type: "INTEGER" },
+              carbs: { type: "INTEGER" },
+              fat: { type: "INTEGER" },
+              sugar: { type: "INTEGER" },
+              fiber: { type: "INTEGER" },
+              sodium: { type: "INTEGER" },
+              confidence: { type: "STRING" },
+              detected_items: { 
+                type: "ARRAY", 
+                items: { type: "STRING" } 
+              },
+              portion_note: { type: "STRING" },
+              nova_group: { type: "INTEGER" },
+              nova_reason: { type: "STRING" },
+              error: { type: "STRING" }
+            },
+            required: ["food_name", "calories", "protein", "carbs", "fat"]
+          }
         },
-        {
-          category: "HARM_CATEGORY_HATE_SPEECH",
-          threshold: "BLOCK_NONE"
-        },
-        {
-          category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
-          threshold: "BLOCK_NONE"
-        },
-        {
-          category: "HARM_CATEGORY_DANGEROUS_CONTENT",
-          threshold: "BLOCK_NONE"
-        }
-      ]
-    })
-  });
+        safetySettings: [
+          {
+            category: "HARM_CATEGORY_HARASSMENT",
+            threshold: "BLOCK_NONE"
+          },
+          {
+            category: "HARM_CATEGORY_HATE_SPEECH",
+            threshold: "BLOCK_NONE"
+          },
+          {
+            category: "HARM_CATEGORY_SEXUALLY_EXPLICIT",
+            threshold: "BLOCK_NONE"
+          },
+          {
+            category: "HARM_CATEGORY_DANGEROUS_CONTENT",
+            threshold: "BLOCK_NONE"
+          }
+        ]
+      })
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
 }
 
 export async function POST(request: NextRequest) {
   try {
     // 1. Validaciones Iniciales
     if (!GEMINI_API_KEY) {
-      return NextResponse.json({ error: 'Server config error: Missing API KEY' }, { status: 500 });
+      return NextResponse.json({ error: 'Configuración del servidor incompleta: Falta API KEY de Gemini' }, { status: 500 });
     }
 
     const { description } = await request.json();
@@ -116,26 +125,59 @@ Devuelve SOLO este JSON válido en texto plano (sin markdown ni explicaciones), 
 
 Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún alimento"}`;
 
-    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash)
-    console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
-    console.log(`✉️ Prompt enviado:\n${prompt}`);
-    let response = await callGeminiAPI(MODEL_PRIMARY, prompt);
-
+    let response: Response;
     let usedModel = MODEL_PRIMARY;
 
-    // 4. Lógica de Fallback (Si falla por cuota 429, usar modelo secundario gemini-3.1-flash-lite)
-    if (response.status === 429) {
-      console.warn(`⚠️ Cuota de ${MODEL_PRIMARY} excedida (429). Cambiando a ${MODEL_FALLBACK} ⚡...`);
-      response = await callGeminiAPI(MODEL_FALLBACK, prompt);
+    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash) con 10s de timeout
+    try {
+      console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
+      console.log(`✉️ Prompt enviado:\n${prompt}`);
+      response = await callGeminiAPI(MODEL_PRIMARY, prompt, 10000);
+    } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
+      const isTimeout = err.name === 'AbortError' || err.message.includes('aborted');
+      console.warn(`⚠️ Error o Timeout en ${MODEL_PRIMARY}:`, err.message);
       
-      usedModel = MODEL_FALLBACK;
+      if (isTimeout) {
+        console.warn(`⚡ Intentando fallback inmediato con ${MODEL_FALLBACK} por timeout...`);
+      } else {
+        console.warn(`⚡ Intentando fallback inmediato con ${MODEL_FALLBACK}...`);
+      }
+      
+      try {
+        usedModel = MODEL_FALLBACK;
+        response = await callGeminiAPI(MODEL_FALLBACK, prompt, 10000);
+      } catch (fallbackError) {
+        const fErr = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+        console.error(`❌ Ambos modelos fallaron o excedieron el tiempo de espera. Fallback error:`, fErr.message);
+        return NextResponse.json({ 
+          error: 'El servicio de IA de Google no respondió a tiempo. Por favor, intenta de nuevo o escribe los detalles manualmente.' 
+        }, { status: 504 });
+      }
     }
 
-    // Manejo de otros errores
+    // 4. Lógica de Fallback de Cuota (Si responde pero falla por cuota 429)
+    if (response.status === 429) {
+      console.warn(`⚠️ Cuota de ${MODEL_PRIMARY} excedida (429). Cambiando a ${MODEL_FALLBACK} ⚡...`);
+      try {
+        response = await callGeminiAPI(MODEL_FALLBACK, prompt, 10000);
+        usedModel = MODEL_FALLBACK;
+      } catch (fallbackError) {
+        const fErr = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+        console.error(`❌ Error en fallback ${MODEL_FALLBACK} tras cuota excedida:`, fErr.message);
+        return NextResponse.json({ 
+          error: 'El servicio de IA de Google está saturado (límite de cuota). Por favor, intenta de nuevo en unos momentos.' 
+        }, { status: 429 });
+      }
+    }
+
+    // Manejo de otros errores HTTP
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`❌ Error en ${usedModel}:`, errorText);
-      return NextResponse.json({ error: `API Error (${usedModel}): ${response.status}` }, { status: response.status });
+      console.error(`❌ Error en ${usedModel} (Status: ${response.status}):`, errorText);
+      return NextResponse.json({ 
+        error: `El servicio de análisis (Gemini) reportó un error (${response.status}). Intenta de nuevo.` 
+      }, { status: response.status });
     }
 
     // 5. Procesar Respuesta
@@ -174,16 +216,17 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
       } else {
         validatedData = nutritionDataSchema.parse(parsedData);
       }
-    } catch (validationError: any) {
+    } catch (validationError) {
       console.error('❌ Error de validación Zod o JSON parse:', validationError, rawText);
+      const vErr = validationError as { errors?: unknown; message?: string };
       return NextResponse.json({ 
         error: 'La IA devolvió datos inconsistentes.', 
-        details: validationError.errors || validationError.message 
+        details: vErr.errors || vErr.message || 'Error desconocido' 
       }, { status: 500 });
     }
 
     // Añadir metadatos
-    (validatedData as any).model_used = usedModel;
+    (validatedData as Record<string, unknown>).model_used = usedModel;
 
     return NextResponse.json(validatedData, { status: 200 });
 
