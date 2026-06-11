@@ -78,6 +78,33 @@ async function callGeminiAPI(model: string, promptText: string, timeoutMs = 8000
   }
 }
 
+async function callGeminiAPIWithRetry(model: string, promptText: string, timeoutMs = 4000, maxRetries = 2) {
+  let attempt = 0;
+  let delay = 300;
+
+  while (true) {
+    try {
+      attempt++;
+      const response = await callGeminiAPI(model, promptText, timeoutMs);
+      
+      if (response.ok || (response.status !== 503 && response.status !== 429) || attempt >= maxRetries) {
+        return response;
+      }
+      
+      console.warn(`⚠️ Intento ${attempt} falló con ${response.status} para ${model}. Reintentando en ${delay}ms...`);
+    } catch (error) {
+      if (attempt >= maxRetries) {
+        throw error;
+      }
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.warn(`⚠️ Intento ${attempt} lanzó excepción para ${model} (${err.message}). Reintentando en ${delay}ms...`);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, delay));
+    delay *= 2;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 1. Validaciones Iniciales
@@ -126,27 +153,27 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
     let usedModel = MODEL_PRIMARY;
     let success = false;
 
-    // 3. INTENTO 1: Usar modelo principal (gemini-1.5-flash) con 10s de timeout
+    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash) con reintentos y 4s timeout por intento
     try {
       console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
       console.log(`✉️ Prompt enviado:\n${prompt}`);
-      response = await callGeminiAPI(MODEL_PRIMARY, prompt, 10000);
+      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, prompt, 4000, 2);
       if (response.ok) {
         success = true;
       } else {
-        console.warn(`⚠️ Error en ${MODEL_PRIMARY} (Status: ${response.status}). Probando fallback...`);
+        console.warn(`⚠️ Error en ${MODEL_PRIMARY} tras reintentos (Status: ${response.status}). Probando fallback...`);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      console.warn(`⚠️ Excepción en ${MODEL_PRIMARY}:`, err.message);
+      console.warn(`⚠️ Excepción en ${MODEL_PRIMARY} tras reintentos:`, err.message);
     }
 
-    // 4. INTENTO 2: Fallback (si el primero falló por cualquier motivo: error, timeout, 404, 429, etc.)
+    // 4. INTENTO 2: Fallback (si el primero falló por cualquier motivo: error, timeout, 404, 429, 503, etc.)
     if (!success) {
       try {
         usedModel = MODEL_FALLBACK;
         console.log(`⚡ Intentando fallback con ${MODEL_FALLBACK}...`);
-        response = await callGeminiAPI(MODEL_FALLBACK, prompt, 10000);
+        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, prompt, 4000, 2);
         if (response.ok) {
           success = true;
         }

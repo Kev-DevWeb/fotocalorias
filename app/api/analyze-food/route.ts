@@ -87,6 +87,33 @@ async function callGeminiAPI(model: string, imageBase64: string, mimeType: strin
   }
 }
 
+async function callGeminiAPIWithRetry(model: string, imageBase64: string, mimeType: string, promptText: string, timeoutMs = 4000, maxRetries = 2) {
+  let attempt = 0;
+  let delay = 300;
+
+  while (true) {
+    try {
+      attempt++;
+      const response = await callGeminiAPI(model, imageBase64, mimeType, promptText, timeoutMs);
+      
+      if (response.ok || (response.status !== 503 && response.status !== 429) || attempt >= maxRetries) {
+        return response;
+      }
+      
+      console.warn(`⚠️ Intento ${attempt} de imagen falló con ${response.status} para ${model}. Reintentando en ${delay}ms...`);
+    } catch (error) {
+      if (attempt >= maxRetries) {
+        throw error;
+      }
+      const err = error instanceof Error ? error : new Error(String(error));
+      console.warn(`⚠️ Intento ${attempt} de imagen lanzó excepción para ${model} (${err.message}). Reintentando en ${delay}ms...`);
+    }
+    
+    await new Promise(resolve => setTimeout(resolve, delay));
+    delay *= 2;
+  }
+}
+
 export async function POST(request: NextRequest) {
   try {
     // 1. Validaciones Iniciales
@@ -130,27 +157,27 @@ Si no hay comida: {"error": "No se detectó comida"}`;
     let usedModel = MODEL_PRIMARY;
     let success = false;
 
-    // 3. INTENTO 1: Usar modelo principal (gemini-1.5-flash) con 12s de timeout (damos un poco más para imágenes)
+    // 3. INTENTO 1: Usar modelo principal (gemini-3.5-flash) con reintentos y 4s timeout por intento
     try {
       console.log(`🤖 Intentando con ${MODEL_PRIMARY}...`);
       console.log(`✉️ Prompt enviado:\n${prompt}`);
-      response = await callGeminiAPI(MODEL_PRIMARY, image, mimeType, prompt, 12000);
+      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, image, mimeType, prompt, 4000, 2);
       if (response.ok) {
         success = true;
       } else {
-        console.warn(`⚠️ Error en ${MODEL_PRIMARY} (Status: ${response.status}). Probando fallback...`);
+        console.warn(`⚠️ Error en ${MODEL_PRIMARY} tras reintentos (Status: ${response.status}). Probando fallback...`);
       }
     } catch (error) {
       const err = error instanceof Error ? error : new Error(String(error));
-      console.warn(`⚠️ Error o Timeout en ${MODEL_PRIMARY}:`, err.message);
+      console.warn(`⚠️ Error o Timeout en ${MODEL_PRIMARY} tras reintentos:`, err.message);
     }
 
-    // 4. INTENTO 2: Fallback (si el primero falló por cualquier motivo: error, timeout, 404, 429, etc.)
+    // 4. INTENTO 2: Fallback (si el primero falló por cualquier motivo: error, timeout, 404, 429, 503, etc.)
     if (!success) {
       try {
         usedModel = MODEL_FALLBACK;
         console.log(`⚡ Intentando fallback con ${MODEL_FALLBACK}...`);
-        response = await callGeminiAPI(MODEL_FALLBACK, image, mimeType, prompt, 12000);
+        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, image, mimeType, prompt, 4000, 2);
         if (response.ok) {
           success = true;
         }
