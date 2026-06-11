@@ -354,6 +354,9 @@ export default function Home() {
   const requestCount = useRef<number>(0);
   const requestTimestamps = useRef<number[]>([]);
 
+  // Ref para controlar cuándo la hidratación se cambia manualmente y evitar bucles/sincronizaciones en la carga inicial o cambio de fecha
+  const isManualChangeRef = useRef<boolean>(false);
+
   // Autenticación
   useEffect(() => {
     console.log('🔵 Inicializando autenticación...');
@@ -951,11 +954,14 @@ export default function Home() {
 
       const endOfDay = new Date(date);
       endOfDay.setHours(23, 59, 59, 999);
-      // Cap endTime to current time if the date is today to avoid writing data into the future
-      let endMillisForPoint = endOfDay.getTime();
-      if (date.toDateString() === new Date().toDateString()) {
-        endMillisForPoint = Date.now();
-      }
+      
+      // Para evitar que Google Fit sume de forma duplicada o acumulativa la hidratación
+      // debido a cambios constantes en el timestamp de fin (Date.now()), usamos un rango fijo y constante
+      // para el punto de ese día (de 00:00:00 a 00:00:01). De esta forma, Google Fit sobrescribirá
+      // siempre el punto anterior para ese día en lugar de crear puntos nuevos.
+      // Nos aseguramos de que no esté en el futuro limitándolo a Date.now().
+      const pointStartTime = startTimeMillis;
+      const pointEndTime = Math.min(startTimeMillis + 1000, Date.now());
 
       const datasetId = `${startTimeMillis * 1000000}-${endOfDay.getTime() * 1000000}`;
       
@@ -963,8 +969,8 @@ export default function Home() {
       const volumeLiters = waterMl / 1000;
 
       const points = [{
-        startTimeNanos: startTimeMillis * 1000000,
-        endTimeNanos: endMillisForPoint * 1000000,
+        startTimeNanos: pointStartTime * 1000000,
+        endTimeNanos: pointEndTime * 1000000,
         dataTypeName: 'com.google.hydration',
         value: [{ fpVal: volumeLiters }]
       }];
@@ -1054,8 +1060,11 @@ export default function Home() {
   // Auto-sincronización de hidratación a Google Fit al cambiar agua consumida o fecha
   useEffect(() => {
     if (user && waterIntake >= 0) {
-      if (userData?.googleFitTokens) {
-        syncHydrationToGoogleFit(waterIntake, selectedDate, userData.googleFitTokens);
+      if (isManualChangeRef.current) {
+        isManualChangeRef.current = false;
+        if (userData?.googleFitTokens) {
+          syncHydrationToGoogleFit(waterIntake, selectedDate, userData.googleFitTokens);
+        }
       }
       
       // Enviar datos a la Companion App nativa (si estamos dentro del WebView)
@@ -1392,6 +1401,9 @@ export default function Home() {
       const dateString = selectedDate.toISOString().split('T')[0];
       const hydrationDocRef = doc(db, 'users', user.uid, 'hydration_logs', dateString);
       const newAmount = Math.max(0, waterIntake + amountChange);
+      
+      // Marcar que este cambio es manual para que el useEffect lo sincronice a Google Fit
+      isManualChangeRef.current = true;
       
       await setDoc(hydrationDocRef, {
         amount: newAmount,
