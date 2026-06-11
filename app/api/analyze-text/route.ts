@@ -7,7 +7,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const MODEL_PRIMARY = 'gemini-3.5-flash';
 const MODEL_FALLBACK = 'gemini-3.1-flash-lite';
 
-async function callGeminiAPI(model: string, promptText: string, enableThinking: boolean, timeoutMs = 8000) {
+async function callGeminiAPI(model: string, promptText: string, enableThinking: boolean, useSchema: boolean, timeoutMs = 8000) {
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${GEMINI_API_KEY}`;
 
   const controller = new AbortController();
@@ -16,7 +16,10 @@ async function callGeminiAPI(model: string, promptText: string, enableThinking: 
   const generationConfig: Record<string, unknown> = {
     maxOutputTokens: 8192,
     responseMimeType: "application/json",
-    responseSchema: {
+  };
+
+  if (useSchema) {
+    generationConfig.responseSchema = {
       type: "object",
       properties: {
         food_name: { type: "string" },
@@ -38,8 +41,8 @@ async function callGeminiAPI(model: string, promptText: string, enableThinking: 
         error: { type: "string" }
       },
       required: ["food_name", "calories", "protein", "carbs", "fat"]
-    }
-  };
+    };
+  }
 
   if (enableThinking) {
     generationConfig.thinkingConfig = {
@@ -87,6 +90,7 @@ async function callGeminiAPIWithRetry(
   model: string, 
   promptText: string, 
   enableThinkingByDefault = true, 
+  useSchemaByDefault = true,
   timeoutMs = 4000, 
   maxRetries = 3
 ) {
@@ -96,15 +100,16 @@ async function callGeminiAPIWithRetry(
   while (true) {
     try {
       attempt++;
-      // Si estamos en un reintento (intento > 1), desactivamos thinking para evitar sobrecargas de razonamiento
+      // Si estamos en un reintento (intento > 1), desactivamos thinking y schema para evitar sobrecargas de razonamiento/esquema
       const enableThinking = attempt === 1 ? enableThinkingByDefault : false;
-      const response = await callGeminiAPI(model, promptText, enableThinking, timeoutMs);
+      const useSchema = attempt === 1 ? useSchemaByDefault : false;
+      const response = await callGeminiAPI(model, promptText, enableThinking, useSchema, timeoutMs);
       
       if (response.ok || (response.status !== 503 && response.status !== 429) || attempt >= maxRetries) {
         return response;
       }
       
-      console.warn(`⚠️ Intento ${attempt} falló con ${response.status} para ${model}. Reintentando sin thinking en ${delay}ms...`);
+      console.warn(`⚠️ Intento ${attempt} falló con ${response.status} para ${model}. Reintentando sin thinking/schema en ${delay}ms...`);
     } catch (error) {
       if (attempt >= maxRetries) {
         throw error;
@@ -170,7 +175,7 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
     try {
       console.log(`🤖 Analizando texto con ${MODEL_PRIMARY}...`);
       console.log(`✉️ Prompt enviado:\n${prompt}`);
-      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, prompt, true, 3500, 2);
+      response = await callGeminiAPIWithRetry(MODEL_PRIMARY, prompt, true, true, 3500, 2);
       if (response.ok) {
         success = true;
       } else {
@@ -186,8 +191,8 @@ Si no puedes identificar alimentos: {"error": "No se pudo identificar ningún al
       try {
         usedModel = MODEL_FALLBACK;
         console.log(`⚡ Intentando fallback con ${MODEL_FALLBACK}...`);
-        // Para fallback, solo hacemos 1 intento de 2.0s sin reintento para evitar exceder los 10s de Vercel
-        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, prompt, false, 2000, 1);
+        // Para fallback, solo hacemos 1 intento de 2.0s sin reintento ni schema para evitar exceder los 10s de Vercel
+        response = await callGeminiAPIWithRetry(MODEL_FALLBACK, prompt, false, false, 2000, 1);
         if (response.ok) {
           success = true;
         }
