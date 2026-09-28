@@ -34,6 +34,8 @@ import { UserProfile, MacroTargets, calculateDailyProgress } from '@/lib/calorie
 import AuthForm from './components/AuthForm';
 import ProfileSetup from './components/ProfileSetup';
 import ProgressDashboard from './components/ProgressDashboard';
+import HuaweiLogSheet from './components/HuaweiLogSheet';
+import { countPendingHuawei } from '@/lib/huawei-health';
 import imageCompression from 'browser-image-compression';
 
 // --- CONFIGURACIÓN FIREBASE ---
@@ -89,6 +91,7 @@ interface CalorieLog extends NutritionData {
   createdAt: any;
   imagePreview?: string;
   meal_type?: 'desayuno' | 'almuerzo' | 'cena' | 'snack';
+  huawei_logged_at?: unknown;
 }
 
 interface UserData {
@@ -293,6 +296,7 @@ export default function Home() {
   const [user, setUser] = useState<FirebaseUser | null>(null);
   const [userData, setUserData] = useState<UserData | null>(null);
   const [logs, setLogs] = useState<CalorieLog[]>([]);
+  const [huaweiSheetLog, setHuaweiSheetLog] = useState<CalorieLog | null>(null);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<NutritionData | null>(null);
@@ -1390,6 +1394,18 @@ export default function Home() {
     }
   };
 
+  const markHuaweiLogged = async (id: string) => {
+    try {
+      await updateDoc(doc(db, 'users', user!.uid, 'calorie_logs', id), {
+        huawei_logged_at: serverTimestamp(),
+      });
+    } catch (error) {
+      console.error('❌ Error al marcar como registrado en Huawei:', error);
+      alert('No se pudo guardar la marca. Intenta de nuevo.');
+      throw error;
+    }
+  };
+
   const updateHydration = async (amountChange: number) => {
     if (!user) {
       // Modo invitado
@@ -2184,6 +2200,11 @@ export default function Home() {
             <span className="text-2xl">🍽️</span>
             Comidas del Día
             <span className="text-sm font-normal text-slate-500">({logs.length})</span>
+            {logs.length > 0 && countPendingHuawei(logs) > 0 && (
+              <span className="ml-auto text-xs font-semibold text-red-600 bg-red-50 px-2 py-1 rounded-full">
+                Pendientes en Huawei: {countPendingHuawei(logs)}
+              </span>
+            )}
           </h2>
           {logs.length === 0 ? (
             <div className="text-center py-12 border-2 border-dashed border-slate-200 rounded-xl bg-white">
@@ -2239,6 +2260,19 @@ export default function Home() {
                       )}
                     </div>
                   </div>
+                  {log.huawei_logged_at ? (
+                    <span className="text-emerald-500 p-2" title="Registrado en Huawei Health">
+                      <Check className="w-5 h-5" />
+                    </span>
+                  ) : (
+                    <button
+                      onClick={() => setHuaweiSheetLog(log)}
+                      className="text-[10px] font-bold text-red-600 border border-red-200 rounded-lg px-2 py-1"
+                      title="Registrar en Huawei Health"
+                    >
+                      Huawei
+                    </button>
+                  )}
                   <button onClick={() => deleteLog(log.id)} className="text-slate-300 hover:text-red-500 p-2">
                     <Trash2 className="w-5 h-5" />
                   </button>
@@ -2248,6 +2282,14 @@ export default function Home() {
           )}
         </div>
       </main>
+
+      {huaweiSheetLog && (
+        <HuaweiLogSheet
+          log={huaweiSheetLog}
+          onMarkLogged={markHuaweiLogged}
+          onClose={() => setHuaweiSheetLog(null)}
+        />
+      )}
 
       {/* Botón Flotante de Escaneo */}
       <div className="fixed bottom-6 left-0 right-0 flex justify-center px-4 z-40">

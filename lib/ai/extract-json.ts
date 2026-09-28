@@ -1,4 +1,4 @@
-export function extractJsonFromGemini(rawText: string): string | null {
+export function extractJson(rawText: string): string | null {
   // 1. Try fenced code blocks first; return the first block that is valid JSON.
   const fencedRegex = /```(?:json)?\s*([\s\S]*?)\s*```/gi;
   let fencedMatch: RegExpExecArray | null;
