@@ -6,7 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:core": "eslint lib app/api scripts app/components/AnalysisEditor.tsx app/components/AnalysisErrorPanel.tsx app/components/StaleVersionBanner.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"lib/**/*.test.ts\"",
+    "test:providers": "tsx --env-file=.env.local scripts/test-providers.ts"
   },
   "dependencies": {
     "browser-image-compression": "^2.0.2",
