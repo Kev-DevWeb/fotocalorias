@@ -36,6 +36,10 @@ import ProfileSetup from './components/ProfileSetup';
 import ProgressDashboard from './components/ProgressDashboard';
 import HuaweiLogSheet from './components/HuaweiLogSheet';
 import { countPendingHuawei } from '@/lib/huawei-health';
+import AnalysisErrorPanel from './components/AnalysisErrorPanel';
+import StaleVersionBanner from './components/StaleVersionBanner';
+import { analyzeFood, isStaleClient, type AnalyzeRequest } from '@/lib/analysis-client';
+import type { FoodItem } from '@/lib/ai/contract';
 import imageCompression from 'browser-image-compression';
 
 // --- CONFIGURACIÓN FIREBASE ---
@@ -84,6 +88,15 @@ interface NutritionData {
   error?: string;
   nova_group?: number;
   nova_reason?: string;
+  items?: FoodItem[];
+  warnings?: string[];
+  adjusted?: boolean;
+  model_used?: string;
+}
+
+interface AnalysisFailure {
+  message: string;
+  source: 'image' | 'text';
 }
 
 interface CalorieLog extends NutritionData {
@@ -106,115 +119,6 @@ interface UserData {
     refreshToken: string;
     expiresAt: number;
   };
-}
-
-// --- FUNCIÓN PARA ANALIZAR IMAGEN ---
-async function analyzeImageWithGemini(
-  base64Image: string, 
-  mimeType: string = 'image/jpeg',
-  rateLimitCheck: () => boolean,
-  portionContext: string = ''
-): Promise<NutritionData | null> {
-  try {
-    // Verificar rate limit antes de hacer la petición
-    if (!rateLimitCheck()) {
-      throw new Error('⏱️ Demasiadas peticiones. Espera un momento antes de analizar otra imagen (límite: 15 por minuto)');
-    }
-
-    console.log('🚀 =================================');
-    console.log('📤 NUEVA PETICIÓN A GEMINI API');
-    console.log('🕐 Timestamp:', new Date().toISOString());
-    console.log('📊 Tipo MIME:', mimeType);
-    console.log('📏 Tamaño base64:', base64Image.length, 'caracteres');
-    console.log('🚀 =================================');
-    
-    const response = await fetch('/api/analyze-food', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        image: base64Image,
-        mimeType: mimeType,
-        portionContext: portionContext
-      })
-    });
-
-    console.log('📥 Response status:', response.status, response.statusText);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('❌ Error response:', errorData);
-      throw new Error(errorData.error || 'Error al analizar la imagen');
-    }
-
-    const result = await response.json();
-    console.log('✅ Resultado de Gemini:', result);
-    
-    if (result.error) {
-      console.warn('⚠️ Gemini reportó error:', result.error);
-      return null;
-    }
-
-    console.log('🎉 Análisis exitoso:', result.food_name);
-    return result;
-
-  } catch (error) {
-    console.error("❌ Error analizando imagen:", error);
-    throw error; // Re-lanzar el error para que se capture arriba
-  }
-}
-
-// --- FUNCIÓN PARA ANALIZAR TEXTO ---
-async function analyzeTextWithGemini(
-  description: string,
-  rateLimitCheck: () => boolean
-): Promise<NutritionData | null> {
-  try {
-    // Verificar rate limit antes de hacer la petición
-    if (!rateLimitCheck()) {
-      throw new Error('⏱️ Demasiadas peticiones. Espera un momento antes de analizar otro alimento (límite: 15 por minuto)');
-    }
-
-    console.log('🚀 =================================');
-    console.log('📤 NUEVA PETICIÓN DE TEXTO A GEMINI API');
-    console.log('🕐 Timestamp:', new Date().toISOString());
-    console.log('📝 Descripción:', description);
-    console.log('🚀 =================================');
-    
-    const response = await fetch('/api/analyze-text', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        description: description
-      })
-    });
-
-    console.log('📥 Response status:', response.status, response.statusText);
-
-    if (!response.ok) {
-      const errorData = await response.json();
-      console.error('❌ Error response:', errorData);
-      throw new Error(errorData.error || 'Error al analizar el texto');
-    }
-
-    const result = await response.json();
-    console.log('✅ Resultado de Gemini:', result);
-    
-    if (result.error) {
-      console.warn('⚠️ Gemini reportó error:', result.error);
-      return null;
-    }
-
-    console.log('🎉 Análisis exitoso:', result.food_name);
-    return result;
-
-  } catch (error) {
-    console.error("❌ Error analizando texto:", error);
-    throw error;
-  }
 }
 
 // --- COMPONENTES UI ---
@@ -300,6 +204,8 @@ export default function Home() {
   const [isAnalyzing, setIsAnalyzing] = useState(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
   const [analysisResult, setAnalysisResult] = useState<NutritionData | null>(null);
+  const [analysisError, setAnalysisError] = useState<AnalysisFailure | null>(null);
+  const [staleVersion, setStaleVersion] = useState(false);
   const [showProfileSetup, setShowProfileSetup] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
@@ -307,6 +213,7 @@ export default function Home() {
   // Estados para modo invitado
   const [isGuestMode, setIsGuestMode] = useState(false);
   const [guestAnalysisResult, setGuestAnalysisResult] = useState<NutritionData | null>(null);
+  const [guestAnalysisError, setGuestAnalysisError] = useState<AnalysisFailure | null>(null);
   const [guestPreviewImage, setGuestPreviewImage] = useState<string | null>(null);
   const [isGuestAnalyzing, setIsGuestAnalyzing] = useState(false);
   const guestFileInputRef = useRef<HTMLInputElement>(null);
@@ -353,10 +260,6 @@ export default function Home() {
   // Estado de carga inicial
   const [isInitializing, setIsInitializing] = useState(true);
   
-  // Rate limiting para Gemini (15 peticiones por minuto máximo)
-  const lastRequestTime = useRef<number>(0);
-  const requestCount = useRef<number>(0);
-  const requestTimestamps = useRef<number[]>([]);
 
   // Ref para controlar cuándo la hidratación se cambia manualmente y evitar bucles/sincronizaciones en la carga inicial o cambio de fecha
   const isManualChangeRef = useRef<boolean>(false);
@@ -1226,25 +1129,6 @@ export default function Home() {
     }
   };
 
-  // Verificar rate limit (15 peticiones por minuto)
-  const checkRateLimit = () => {
-    const now = Date.now();
-    const oneMinuteAgo = now - 60000;
-    
-    // Limpiar timestamps antiguos (más de 1 minuto)
-    requestTimestamps.current = requestTimestamps.current.filter(ts => ts > oneMinuteAgo);
-    
-    // Si hay menos de 15 peticiones en el último minuto, permitir
-    if (requestTimestamps.current.length < 15) {
-      requestTimestamps.current.push(now);
-      console.log(`✅ Rate limit OK: ${requestTimestamps.current.length}/15 peticiones en el último minuto`);
-      return true;
-    }
-    
-    console.warn(`⚠️ Rate limit alcanzado: ${requestTimestamps.current.length}/15 peticiones`);
-    return false;
-  };
-
   // Función para comprimir imagen a miniatura súper ligera antes de guardar en Firestore (evita límite de 1MB)
   const compressImage = (base64: string): Promise<string> => {
     return new Promise((resolve) => {
@@ -1317,6 +1201,7 @@ export default function Home() {
           setPendingBase64(base64String.split(',')[1]);
           setPendingMimeType(compressedFile.type);
           setAnalysisResult(null);
+          setAnalysisError(null);
           setIsAnalyzing(false);
           setPortionContext(''); // Resetear contexto cada vez
         };
@@ -1337,25 +1222,25 @@ export default function Home() {
     }
   };
 
+  // Llama a la API con el token del usuario (si hay sesión) y detecta si el cliente quedó desactualizado
+  const requestAnalysis = async (request: AnalyzeRequest) => {
+    const outcome = await analyzeFood(request, {
+      getToken: async () => (auth.currentUser ? auth.currentUser.getIdToken() : null),
+    });
+    if (isStaleClient(outcome.serverVersion)) setStaleVersion(true);
+    return outcome;
+  };
+
   const analyzeImage = async (base64: string, mimeType: string) => {
     setIsAnalyzing(true);
     setAnalysisResult(null);
-    
-    try {
-      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit, portionContext);
-      
-      if (result && !result.error) {
-        setAnalysisResult(result);
-      } else {
-        alert("No pudimos identificar comida. Intenta una foto más clara.");
-        setPreviewImage(null);
-      }
-    } catch (error: any) {
-      console.error('❌ Error:', error);
-      alert(error.message || "Error al analizar la imagen. Intenta de nuevo.");
-      setPreviewImage(null);
-    }
-    
+    setAnalysisError(null);
+
+    const outcome = await requestAnalysis({ kind: 'image', imageBase64: base64, mimeType, portionContext });
+    // Si falla, la foto se conserva para poder reintentar
+    if (outcome.ok) setAnalysisResult(outcome.data);
+    else setAnalysisError({ message: outcome.message, source: 'image' });
+
     setIsAnalyzing(false);
   };
 
@@ -1435,7 +1320,8 @@ export default function Home() {
 
   // Analizar texto (usuario autenticado)
   const handleTextSubmit = async () => {
-    if (!foodDescription.trim()) {
+    const description = foodDescription.trim();
+    if (!description) {
       alert('Por favor describe el alimento');
       return;
     }
@@ -1443,26 +1329,21 @@ export default function Home() {
     setIsAnalyzingText(true);
     setShowTextInputModal(false);
     setIsAnalyzing(true); // Activar estado de análisis para mostrar loading
+    setAnalysisResult(null);
+    setAnalysisError(null);
     setPreviewImage('text'); // Marcador para indicar que es análisis de texto
 
-    try {
-      const result = await analyzeTextWithGemini(foodDescription.trim(), checkRateLimit);
-      
-      if (result && !result.error) {
-        setAnalysisResult(result);
-      } else {
-        alert("No se pudo identificar el alimento. Intenta ser más específico.");
-        setPreviewImage(null);
-      }
-    } catch (error: any) {
-      console.error('❌ Error:', error);
-      alert(error.message || "Error al analizar el texto. Intenta de nuevo.");
-      setPreviewImage(null);
-    } finally {
-      setIsAnalyzingText(false);
-      setIsAnalyzing(false); // Desactivar loading
+    const outcome = await requestAnalysis({ kind: 'text', description });
+    if (outcome.ok) {
+      setAnalysisResult(outcome.data);
       setFoodDescription('');
+    } else {
+      // La descripción se conserva para reintentar o editarla
+      setAnalysisError({ message: outcome.message, source: 'text' });
     }
+
+    setIsAnalyzingText(false);
+    setIsAnalyzing(false);
   };
 
   const handleManualSubmit = () => {
@@ -1487,7 +1368,8 @@ export default function Home() {
 
   // Analizar texto (modo invitado)
   const handleGuestTextSubmit = async () => {
-    if (!foodDescription.trim()) {
+    const description = foodDescription.trim();
+    if (!description) {
       alert('Por favor describe el alimento');
       return;
     }
@@ -1495,26 +1377,20 @@ export default function Home() {
     setIsAnalyzingText(true);
     setShowGuestTextInputModal(false);
     setIsGuestAnalyzing(true);
+    setGuestAnalysisResult(null);
+    setGuestAnalysisError(null);
     setGuestPreviewImage('text');
 
-    try {
-      const result = await analyzeTextWithGemini(foodDescription.trim(), checkRateLimit);
-      
-      if (result && !result.error) {
-        setGuestAnalysisResult(result);
-      } else {
-        alert("No se pudo identificar el alimento. Intenta ser más específico.");
-        setGuestPreviewImage(null);
-      }
-    } catch (error: any) {
-      console.error('❌ Error:', error);
-      alert(error.message || "Error al analizar el texto. Intenta de nuevo.");
-      setGuestPreviewImage(null);
-    } finally {
-      setIsAnalyzingText(false);
-      setIsGuestAnalyzing(false);
+    const outcome = await requestAnalysis({ kind: 'text', description });
+    if (outcome.ok) {
+      setGuestAnalysisResult(outcome.data);
       setFoodDescription('');
+    } else {
+      setGuestAnalysisError({ message: outcome.message, source: 'text' });
     }
+
+    setIsAnalyzingText(false);
+    setIsGuestAnalyzing(false);
   };
 
   // Calcular totales del día
@@ -1571,6 +1447,7 @@ export default function Home() {
           setGuestPendingBase64(base64String.split(',')[1]);
           setGuestPendingMimeType(compressedFile.type);
           setGuestAnalysisResult(null);
+          setGuestAnalysisError(null);
           setIsGuestAnalyzing(false);
           setGuestPortionContext('');
         };
@@ -1594,22 +1471,12 @@ export default function Home() {
   const analyzeGuestImage = async (base64: string, mimeType: string) => {
     setIsGuestAnalyzing(true);
     setGuestAnalysisResult(null);
-    
-    try {
-      const result = await analyzeImageWithGemini(base64, mimeType, checkRateLimit, guestPortionContext);
-      
-      if (result && !result.error) {
-        setGuestAnalysisResult(result);
-      } else {
-        alert("No pudimos identificar comida. Intenta una foto más clara.");
-        setGuestPreviewImage(null);
-      }
-    } catch (error: any) {
-      console.error('❌ Error:', error);
-      alert(error.message || "Error al analizar la imagen. Intenta de nuevo.");
-      setGuestPreviewImage(null);
-    }
-    
+    setGuestAnalysisError(null);
+
+    const outcome = await requestAnalysis({ kind: 'image', imageBase64: base64, mimeType, portionContext: guestPortionContext });
+    if (outcome.ok) setGuestAnalysisResult(outcome.data);
+    else setGuestAnalysisError({ message: outcome.message, source: 'image' });
+
     setIsGuestAnalyzing(false);
   };
 
@@ -1635,6 +1502,7 @@ export default function Home() {
   if (isGuestMode && !user) {
     return (
       <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+        {staleVersion && <StaleVersionBanner />}
         {/* Header Invitado */}
         <header className="bg-white sticky top-0 z-10 border-b border-slate-200 px-4 py-4 shadow-sm">
           <div className="max-w-md mx-auto flex justify-between items-center">
@@ -1680,7 +1548,7 @@ export default function Home() {
                   <div className="relative h-40 sm:h-48 bg-slate-100 flex-shrink-0">
                     <img src={guestPreviewImage} alt="Preview" className="w-full h-full object-cover" />
                     <button 
-                      onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                      onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); setGuestAnalysisError(null); }}
                       className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
                     >
                       <X className="w-5 h-5" />
@@ -1690,7 +1558,7 @@ export default function Home() {
                   <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                     <h3 className="font-bold text-slate-800">Análisis de Comida</h3>
                     <button 
-                      onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                      onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); setGuestAnalysisError(null); }}
                       className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                     >
                       <X className="w-5 h-5" />
@@ -1703,6 +1571,13 @@ export default function Home() {
                       <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto" />
                       <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
                     </div>
+                  ) : guestAnalysisError ? (
+                    <AnalysisErrorPanel
+                      message={guestAnalysisError.message}
+                      onRetry={guestAnalysisError.source === 'text' ? handleGuestTextSubmit : triggerGuestAnalysis}
+                      onEdit={guestAnalysisError.source === 'text' ? () => { setGuestPreviewImage(null); setGuestAnalysisError(null); setShowGuestTextInputModal(true); } : undefined}
+                      onCancel={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); setGuestAnalysisError(null); }}
+                    />
                   ) : guestAnalysisResult ? (
                     <div className="space-y-4">
                       <div>
@@ -1772,7 +1647,7 @@ export default function Home() {
                       </div>
                       <div className="pt-3 border-t border-slate-100 mt-2">
                         <Button 
-                          onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); }}
+                          onClick={() => { setGuestPreviewImage(null); setGuestAnalysisResult(null); setGuestAnalysisError(null); }}
                           variant="primary" 
                           className="w-full"
                         >
@@ -1968,6 +1843,7 @@ export default function Home() {
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans text-slate-900">
+      {staleVersion && <StaleVersionBanner />}
       {/* Header */}
       <header className="bg-white sticky top-0 z-10 border-b border-slate-200 px-4 py-4 shadow-sm">
         <div className="max-w-md mx-auto flex justify-between items-center">
@@ -2057,7 +1933,7 @@ export default function Home() {
                 <div className="relative h-40 sm:h-48 bg-slate-100 flex-shrink-0">
                   <img src={previewImage} alt="Preview" className="w-full h-full object-cover" />
                   <button 
-                    onClick={() => { setPreviewImage(null); setAnalysisResult(null); }}
+                    onClick={() => { setPreviewImage(null); setAnalysisResult(null); setAnalysisError(null); }}
                     className="absolute top-2 right-2 bg-black/50 text-white p-2 rounded-full hover:bg-black/70 transition-colors"
                   >
                     <X className="w-5 h-5" />
@@ -2067,7 +1943,7 @@ export default function Home() {
                 <div className="p-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
                   <h3 className="font-bold text-slate-800">Análisis de Comida</h3>
                   <button 
-                    onClick={() => { setPreviewImage(null); setAnalysisResult(null); }}
+                    onClick={() => { setPreviewImage(null); setAnalysisResult(null); setAnalysisError(null); }}
                     className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-100 transition-colors"
                   >
                     <X className="w-5 h-5" />
@@ -2080,6 +1956,13 @@ export default function Home() {
                     <Loader2 className="w-10 h-10 text-orange-500 animate-spin mx-auto" />
                     <p className="text-slate-600 font-medium animate-pulse">Analizando con IA...</p>
                   </div>
+                ) : analysisError ? (
+                  <AnalysisErrorPanel
+                    message={analysisError.message}
+                    onRetry={analysisError.source === 'text' ? handleTextSubmit : triggerAnalysis}
+                    onEdit={analysisError.source === 'text' ? () => { setPreviewImage(null); setAnalysisError(null); setShowTextInputModal(true); } : undefined}
+                    onCancel={() => { setPreviewImage(null); setAnalysisResult(null); setAnalysisError(null); }}
+                  />
                 ) : analysisResult ? (
                   <div className="space-y-4">
                     <div>
