@@ -36,6 +36,7 @@ import ProfileSetup from './components/ProfileSetup';
 import ProgressDashboard from './components/ProgressDashboard';
 import HuaweiLogSheet from './components/HuaweiLogSheet';
 import { countPendingHuawei } from '@/lib/huawei-health';
+import AnalysisEditor from './components/AnalysisEditor';
 import AnalysisErrorPanel from './components/AnalysisErrorPanel';
 import StaleVersionBanner from './components/StaleVersionBanner';
 import { analyzeFood, isStaleClient, type AnalyzeRequest } from '@/lib/analysis-client';
@@ -92,6 +93,14 @@ interface NutritionData {
   warnings?: string[];
   adjusted?: boolean;
   model_used?: string;
+}
+
+// Firestore no acepta `undefined`, y los avisos solo sirven en pantalla
+function toFirestoreLog(result: NutritionData): Record<string, unknown> {
+  const clean = JSON.parse(JSON.stringify(result)) as Record<string, unknown>;
+  delete clean.warnings;
+  delete clean.error;
+  return clean;
 }
 
 interface AnalysisFailure {
@@ -1250,7 +1259,7 @@ export default function Home() {
       console.log('💾 Guardando comida (sin imagen):', analysisResult.food_name);
       
       const docRef = await addDoc(collection(db, 'users', user.uid, 'calorie_logs'), {
-        ...analysisResult,
+        ...toFirestoreLog(analysisResult),
         createdAt: serverTimestamp(),
         imagePreview: null, // No guardamos imagen para mantener la base de datos 100% gratuita
         meal_type: selectedMealType
@@ -1616,6 +1625,8 @@ export default function Home() {
                         </div>
                       )}
                       
+                      <AnalysisEditor result={guestAnalysisResult} onChange={setGuestAnalysisResult} />
+
                       <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                         <div className="bg-blue-50 rounded-lg p-1.5 sm:p-2 text-center">
                           <div className="text-[10px] sm:text-xs text-blue-600 font-semibold truncate">Proteína</div>
@@ -2017,6 +2028,8 @@ export default function Home() {
                         <option value="snack">🍎 Snack / Colación</option>
                       </select>
                     </div>
+
+                    <AnalysisEditor result={analysisResult} onChange={setAnalysisResult} />
 
                     <div className="grid grid-cols-3 gap-1.5 sm:gap-2">
                       <div className="bg-blue-50 rounded-lg p-1.5 sm:p-2 text-center">
