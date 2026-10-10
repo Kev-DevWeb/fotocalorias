@@ -1,8 +1,12 @@
 import { NextResponse, type NextRequest } from 'next/server';
+import { MemoryRateLimiter } from '../rate-limit';
+import { resolveAccess } from './access';
 import { ERRORS, InputError, errorBody } from './errors';
 import { analyze } from './index';
 import type { AnalysisInput } from './types';
 import { cleanText, validateImage } from './validate-input';
+
+const limiter = new MemoryRateLimiter();
 
 /** Commit desplegado. El cliente lo compara con el suyo para detectar que quedó en caché una versión vieja. */
 export const APP_VERSION = (process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7);
@@ -37,6 +41,15 @@ export async function handleAnalyzeRequest(request: NextRequest, kind: AnalysisI
     if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InputError('INVALID_INPUT');
 
     const input = parseInput(body as Record<string, unknown>, kind);
+
+    // Solo las peticiones válidas gastan cuota
+    const access = await resolveAccess(request);
+    const decision = limiter.hit(access.key, access.rules);
+    if (!decision.allowed) {
+      const code = access.kind === 'guest' ? 'GUEST_LIMIT' : 'RATE_LIMITED';
+      return jsonResponse(errorBody(code), ERRORS[code].status, { 'Retry-After': String(decision.retryAfterSec ?? 60) });
+    }
+
     const result = await analyze(input);
 
     if (result.ok) return jsonResponse(result.data, 200);
