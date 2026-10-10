@@ -1,0 +1,50 @@
+import { NextResponse, type NextRequest } from 'next/server';
+import { ERRORS, InputError, errorBody } from './errors';
+import { analyze } from './index';
+import type { AnalysisInput } from './types';
+import { cleanText, validateImage } from './validate-input';
+
+/** Commit desplegado. El cliente lo compara con el suyo para detectar que quedó en caché una versión vieja. */
+export const APP_VERSION = (process.env.VERCEL_GIT_COMMIT_SHA ?? 'dev').slice(0, 7);
+
+export function jsonResponse(body: unknown, status: number, headers?: Record<string, string>): NextResponse {
+  return NextResponse.json(body, {
+    status,
+    headers: { 'x-app-version': APP_VERSION, 'Cache-Control': 'no-store', ...headers },
+  });
+}
+
+function parseInput(body: Record<string, unknown>, kind: AnalysisInput['kind']): AnalysisInput {
+  if (kind === 'text') {
+    return { kind: 'text', description: cleanText(body.description, { min: 3, max: 500 }) };
+  }
+  const image = validateImage(body.image);
+  const context = typeof body.portionContext === 'string' && body.portionContext.trim()
+    ? cleanText(body.portionContext.slice(0, 300), { max: 300, label: 'El contexto' })
+    : undefined;
+  return { kind: 'image', imageBase64: image.base64, mimeType: image.mimeType, portionContext: context };
+}
+
+/** Flujo común de /api/analyze-food y /api/analyze-text. */
+export async function handleAnalyzeRequest(request: NextRequest, kind: AnalysisInput['kind']): Promise<NextResponse> {
+  try {
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      throw new InputError('INVALID_INPUT', 'El cuerpo de la petición no es JSON válido.');
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InputError('INVALID_INPUT');
+
+    const input = parseInput(body as Record<string, unknown>, kind);
+    const result = await analyze(input);
+
+    if (result.ok) return jsonResponse(result.data, 200);
+    if (result.code === 'NO_FOOD') return jsonResponse({ ...errorBody('NO_FOOD'), reason: result.reason }, ERRORS.NO_FOOD.status);
+    return jsonResponse(errorBody(result.code), ERRORS[result.code].status);
+  } catch (error) {
+    if (error instanceof InputError) return jsonResponse(errorBody(error.code, error.message), ERRORS[error.code].status);
+    console.error('Error interno en el análisis:', error);
+    return jsonResponse(errorBody('INTERNAL'), ERRORS.INTERNAL.status);
+  }
+}

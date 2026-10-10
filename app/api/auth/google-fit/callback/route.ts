@@ -84,13 +84,13 @@ export async function GET(request: NextRequest) {
 
     return new NextResponse(responseHtml, { headers: { 'Content-Type': 'text/html' } });
 
-  } catch (err: any) {
+  } catch (err) {
     console.error('❌ Error intercambiando código OAuth:', err);
     return new NextResponse(`
       <html>
         <body>
           <script>
-            window.opener.postMessage({ type: 'GOOGLE_FIT_AUTH_ERROR', error: '${err.message || err}' }, '${origin}');
+            window.opener.postMessage({ type: 'GOOGLE_FIT_AUTH_ERROR', error: '${(err instanceof Error ? err.message : String(err)) || err}' }, '${origin}');
             window.close();
           </script>
         </body>
