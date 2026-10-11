@@ -7,6 +7,7 @@ import { useEffect, useState, type MutableRefObject } from 'react';
 import type { User as FirebaseUser } from 'firebase/auth';
 import { deleteField, doc, onSnapshot, serverTimestamp, setDoc, updateDoc } from 'firebase/firestore';
 import { toast } from 'sonner';
+import { dayKey } from '@/lib/day-key';
 import { db } from '@/lib/firebase';
 import type { CalorieLog, UserData } from '@/lib/types';
 
@@ -68,7 +69,7 @@ export function useHealthSync({ user, userData, selectedDate, logs, waterIntake,
       return;
     }
 
-    const dateString = selectedDate.toISOString().split('T')[0];
+    const dateString = dayKey(selectedDate);
     console.log('🔥 Configurando listener para actividad (Google Fit):', dateString);
     const activityDocRef = doc(db, 'users', user.uid, 'activity_logs', dateString);
     
@@ -133,8 +134,8 @@ export function useHealthSync({ user, userData, selectedDate, logs, waterIntake,
     try {
       const validToken = await getValidAccessToken(tokens);
       
-      const dateString = date.toISOString().split('T')[0];
-      
+      const dateString = dayKey(date);
+
       // Calcular límites de tiempo para la fecha seleccionada en milisegundos
       const startOfDay = new Date(date);
       startOfDay.setHours(0, 0, 0, 0);
@@ -352,7 +353,7 @@ export function useHealthSync({ user, userData, selectedDate, logs, waterIntake,
         throw new Error(`Error HTTP al sincronizar comida: ${response.status} - ${errorText}`);
       }
 
-      console.log(`🍎 Sincronizados exitosamente ${points.length} alimentos con Google Fit para el día ${date.toISOString().split('T')[0]}`);
+      console.log(`🍎 Sincronizados exitosamente ${points.length} alimentos con Google Fit para el día ${dayKey(date)}`);
     } catch (err) {
       console.error('❌ Error al sincronizar alimentos con Google Fit:', err);
     }

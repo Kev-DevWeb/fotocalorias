@@ -14,15 +14,9 @@ import {
   setDoc,
   updateDoc,
 } from 'firebase/firestore';
+import { dayKey } from '@/lib/day-key';
 import { db } from '@/lib/firebase';
 import type { CalorieLog, MealType, NutritionData } from '@/lib/types';
-
-/**
- * Clave del día para los documentos de hidratación y actividad. Usa la fecha
- * en UTC, igual que siempre lo ha hecho la app, para seguir leyendo los
- * mismos documentos.
- */
-export const dayKey = (date: Date) => date.toISOString().split('T')[0];
 
 function logDate(log: CalorieLog): Date | null {
   const created = log.createdAt;
