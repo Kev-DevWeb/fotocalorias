@@ -1,6 +1,7 @@
 'use client';
 
-import { AlertTriangle, Pencil, RotateCcw } from 'lucide-react';
+import { Pencil, RotateCcw, TriangleAlert } from 'lucide-react';
+import { Button } from './ui/Button';
 
 interface AnalysisErrorPanelProps {
   message: string;
@@ -10,32 +11,26 @@ interface AnalysisErrorPanelProps {
   onCancel: () => void;
 }
 
-/** Se muestra dentro del modal de análisis cuando falla, sin descartar la foto ni el texto. */
+/** Se muestra dentro de la hoja de análisis cuando falla, sin descartar la foto ni el texto. */
 export default function AnalysisErrorPanel({ message, onRetry, onEdit, onCancel }: AnalysisErrorPanelProps) {
   return (
-    <div className="space-y-4" role="alert">
-      <div className="flex items-start gap-3 rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm leading-relaxed text-amber-900">
-        <AlertTriangle className="mt-0.5 h-5 w-5 flex-shrink-0" aria-hidden="true" />
+    <div className="flex flex-col gap-4" role="alert">
+      <div className="flex items-start gap-3 rounded-[22px] border-2 border-outline bg-mango-soft p-4 text-sm leading-relaxed">
+        <TriangleAlert className="mt-0.5 size-5 shrink-0" aria-hidden="true" />
         <p>{message}</p>
       </div>
-      <div className="space-y-2">
-        <button
-          onClick={onRetry}
-          className="flex w-full items-center justify-center gap-2 rounded-xl bg-orange-500 px-4 py-3 font-semibold text-white transition-colors hover:bg-orange-600"
-        >
-          <RotateCcw className="h-4 w-4" aria-hidden="true" /> Reintentar
-        </button>
+      <div className="flex flex-col gap-2.5">
+        <Button size="lg" onClick={onRetry}>
+          <RotateCcw className="size-[18px]" aria-hidden="true" /> Reintentar
+        </Button>
         {onEdit && (
-          <button
-            onClick={onEdit}
-            className="flex w-full items-center justify-center gap-2 rounded-xl border border-slate-200 px-4 py-3 font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-          >
-            <Pencil className="h-4 w-4" aria-hidden="true" /> Editar descripción
-          </button>
+          <Button variant="outline" onClick={onEdit}>
+            <Pencil className="size-4" aria-hidden="true" /> Editar descripción
+          </Button>
         )}
-        <button onClick={onCancel} className="w-full px-4 py-2 text-sm font-semibold text-slate-500 hover:text-slate-700">
+        <Button variant="ghost" onClick={onCancel}>
           Cancelar
-        </button>
+        </Button>
       </div>
     </div>
   );
