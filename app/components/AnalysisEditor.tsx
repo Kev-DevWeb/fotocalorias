@@ -1,8 +1,9 @@
 'use client';
 
 import { useState } from 'react';
-import { AlertTriangle, RotateCcw, X } from 'lucide-react';
+import { RotateCcw, TriangleAlert, X } from 'lucide-react';
 import type { FoodItem } from '@/lib/ai/contract';
+import { cn } from '@/lib/cn';
 import { scaleItem, sumItems } from '@/lib/nutrition-math';
 
 export interface EditableAnalysis {
@@ -86,28 +87,32 @@ export default function AnalysisEditor<T extends EditableAnalysis>({ result, onC
   const hasBreakdown = Boolean(base.items && base.items.length > 0);
 
   return (
-    <div className="space-y-3">
+    <div className="flex flex-col gap-3">
       {base.warnings && base.warnings.length > 0 && (
-        <div className="flex items-start gap-2 rounded-xl border border-amber-200 bg-amber-50 p-3 text-xs leading-relaxed text-amber-900" role="alert">
-          <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0" aria-hidden="true" />
+        <div className="flex items-start gap-2.5 rounded-2xl border-2 border-outline bg-mango-soft p-3 text-[13px] leading-relaxed" role="alert">
+          <TriangleAlert className="mt-0.5 size-4 shrink-0" aria-hidden="true" />
           <div className="space-y-1">
-            {base.warnings.map((warning) => <p key={warning}>{warning}</p>)}
+            {base.warnings.map((warning) => (
+              <p key={warning}>{warning}</p>
+            ))}
           </div>
         </div>
       )}
 
-      <div className="rounded-xl border border-slate-100 bg-slate-50 p-3">
-        <div className="mb-2 flex items-center justify-between gap-2">
-          <span className="text-xs font-bold uppercase tracking-wider text-slate-600">{hasBreakdown ? 'Desglose' : 'Porción'}</span>
+      <div className="rounded-[22px] border-2 border-outline bg-ground p-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <span className="text-xs font-bold uppercase tracking-[0.08em] text-ink-3">{hasBreakdown ? 'Desglose' : 'Porción'}</span>
           <div className="flex gap-1" role="group" aria-label="Ajustar todo el platillo">
             {QUICK_FACTORS.map(([label, factor]) => (
               <button
                 key={label}
+                type="button"
                 onClick={() => setAll(factor)}
                 aria-pressed={activeQuick === factor}
-                className={`min-w-[40px] rounded-lg px-2 py-1.5 text-xs font-bold transition-colors ${
-                  activeQuick === factor ? 'bg-orange-500 text-white' : 'border border-slate-200 bg-white text-slate-700 hover:bg-slate-100'
-                }`}
+                className={cn(
+                  'h-10 min-w-11 rounded-xl border-2 px-2 text-[13px] font-bold transition-colors',
+                  activeQuick === factor ? 'border-inverse bg-inverse text-on-inverse' : 'border-outline bg-card text-ink hover:bg-track',
+                )}
               >
                 {label}
               </button>
@@ -116,21 +121,21 @@ export default function AnalysisEditor<T extends EditableAnalysis>({ result, onC
         </div>
 
         {hasBreakdown && (
-          <ul className="divide-y divide-slate-200">
+          <ul className="mt-2 divide-y-2 divide-line">
             {items.map((item, i) => {
               const row = rows[i];
               const scaled = scaleItem(item, row.factor);
               return (
                 <li key={`${item.name}-${i}`} className="flex items-center gap-2 py-2">
-                  <div className={`min-w-0 flex-1 ${row.removed ? 'opacity-50' : ''}`}>
-                    <p className={`truncate text-sm font-semibold text-slate-800 ${row.removed ? 'line-through' : ''}`}>{item.name}</p>
-                    <p className="text-xs text-slate-500">
+                  <div className={cn('min-w-0 flex-1', row.removed && 'opacity-60')}>
+                    <p className={cn('truncate text-sm font-bold', row.removed && 'line-through')}>{item.name}</p>
+                    <p className="text-xs text-ink-2">
                       {item.quantity ? `${item.quantity} · ` : ''}
-                      <span className="font-semibold text-orange-600">{row.removed ? 0 : scaled.calories} kcal</span>
+                      <span className="font-bold text-ink">{row.removed ? 0 : scaled.calories} kcal</span>
                     </p>
                   </div>
                   {item.grams !== undefined && !row.removed && (
-                    <label className="flex flex-shrink-0 items-center gap-1 text-xs text-slate-500">
+                    <label className="flex shrink-0 items-center gap-1.5 text-xs font-semibold text-ink-2">
                       <input
                         type="number"
                         inputMode="numeric"
@@ -139,26 +144,25 @@ export default function AnalysisEditor<T extends EditableAnalysis>({ result, onC
                         value={row.gramsText}
                         onChange={(e) => setGrams(i, e.target.value)}
                         aria-label={`Gramos de ${item.name}`}
-                        className="w-16 rounded-lg border border-slate-200 bg-white px-2 py-1.5 text-right text-sm text-slate-900 focus:outline-none focus:ring-2 focus:ring-orange-500"
+                        className="h-11 w-[68px] rounded-xl border-2 border-outline bg-card px-2 text-right text-[15px] font-bold text-ink focus-visible:outline-offset-0"
                       />
                       g
                     </label>
                   )}
                   <button
+                    type="button"
                     onClick={() => toggleRemoved(i)}
                     disabled={!row.removed && remaining <= 1}
                     aria-label={row.removed ? `Restaurar ${item.name}` : `Quitar ${item.name}`}
-                    className="flex-shrink-0 rounded-lg p-2 text-slate-400 transition-colors hover:bg-slate-200 hover:text-slate-700 disabled:opacity-30 disabled:hover:bg-transparent"
+                    className="grid size-11 shrink-0 place-items-center rounded-xl text-ink-3 transition-colors hover:bg-track hover:text-ink disabled:opacity-30 disabled:hover:bg-transparent"
                   >
-                    {row.removed ? <RotateCcw className="h-4 w-4" aria-hidden="true" /> : <X className="h-4 w-4" aria-hidden="true" />}
+                    {row.removed ? <RotateCcw className="size-4" aria-hidden="true" /> : <X className="size-4" aria-hidden="true" />}
                   </button>
                 </li>
               );
             })}
           </ul>
         )}
-
-        {base.portion_note && <p className="mt-2 text-xs leading-relaxed text-slate-500">{base.portion_note}</p>}
       </div>
     </div>
   );

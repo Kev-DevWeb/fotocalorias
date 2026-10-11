@@ -1,16 +1,21 @@
-import type { Metadata } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import type { Metadata, Viewport } from "next";
+import { Bricolage_Grotesque, Onest } from "next/font/google";
 import "./globals.css";
 import MobileConsole from "./components/MobileConsole";
+import Providers from "./providers";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Títulos y números grandes
+const bricolage = Bricolage_Grotesque({
+  variable: "--font-bricolage",
   subsets: ["latin"],
+  display: "swap",
 });
 
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
+// Texto
+const onest = Onest({
+  variable: "--font-onest",
   subsets: ["latin"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
@@ -24,8 +29,11 @@ export const metadata: Metadata = {
   },
 };
 
-export const viewport = {
-  themeColor: '#f97316',
+export const viewport: Viewport = {
+  themeColor: [
+    { media: '(prefers-color-scheme: light)', color: '#faf4e6' },
+    { media: '(prefers-color-scheme: dark)', color: '#1a1220' },
+  ],
 };
 
 export default function RootLayout({
@@ -34,29 +42,13 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="es">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      >
-        {children}
-        
+    // next-themes pone la clase del tema en <html> antes de hidratar
+    <html lang="es" suppressHydrationWarning>
+      <body className={`${bricolage.variable} ${onest.variable} antialiased`}>
+        <Providers>{children}</Providers>
+
         {/* Consola móvil para desarrollo */}
         <MobileConsole />
-        
-        {/* Footer Global */}
-        <footer className="bg-white border-t border-slate-200 py-4 px-4 text-center">
-          <p className="text-sm text-slate-600">
-            Desarrollada por{' '}
-            <a 
-              href="https://www.devvisualstudio.com/" 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="text-orange-500 font-semibold hover:text-orange-600 transition-colors hover:underline"
-            >
-              DevVisual Studio
-            </a>
-          </p>
-        </footer>
       </body>
     </html>
   );

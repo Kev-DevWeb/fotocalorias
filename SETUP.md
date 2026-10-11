@@ -9,16 +9,18 @@ He modernizado completamente la aplicación FotoCalorías con las siguientes mej
 ```
 fotocalorias/
 ├── lib/
+│   ├── ai/                            # ✅ Proveedores de IA y motor de reintentos
 │   └── calorie-calculator.ts         # ✅ Calculadora de calorías y macros
+├── hooks/                             # ✅ Sesión, datos del día, análisis y salud
 ├── app/
 │   ├── components/
-│   │   ├── AuthForm.tsx               # ✅ Login y registro
-│   │   ├── ProfileSetup.tsx           # ✅ Configuración de perfil biométrico
-│   │   └── ProgressDashboard.tsx      # ✅ Dashboard con progreso visual
-│   ├── api/
-│   │   └── analyze-food/
-│   │       └── route.ts               # ✅ API segura para Gemini AI
-│   └── page.tsx                       # ✅ Página principal (reescrita)
+│   │   ├── auth/AuthScreen.tsx        # ✅ Login y registro
+│   │   ├── profile/ProfileScreen.tsx  # ✅ Perfil biométrico y metas
+│   │   ├── today/                     # ✅ Pantalla del día con progreso visual
+│   │   ├── add-meal/                  # ✅ Agregar comida (foto, texto o manual)
+│   │   └── ui/                        # ✅ Componentes base
+│   ├── api/                           # ✅ Análisis por foto y texto, health y Google Fit
+│   └── page.tsx                       # ✅ Contenedor que decide qué pantalla mostrar
 ├── context/
 │   ├── DOCUMENTACION_PROYECTO.md      # 📚 Documentación completa
 │   ├── PLAN_VERCEL_DEPLOYMENT.md      # 📚 Guía de deployment en Vercel

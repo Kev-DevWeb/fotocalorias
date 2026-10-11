@@ -26,16 +26,21 @@
 fotocalorias/
 ├── app/
 │   ├── components/
-│   │   ├── AuthForm.tsx            # Formulario de login/registro
-│   │   ├── ProfileSetup.tsx        # Configuración de perfil biométrico
-│   │   └── ProgressDashboard.tsx   # Dashboard con barras de progreso
-│   ├── api/
-│   │   └── analyze-food/
-│   │       └── route.ts            # API Route serverless para Gemini AI
-│   ├── globals.css                 # Estilos globales Tailwind
+│   │   ├── ui/                     # Piezas base: botón, hoja inferior, selector, anillo y barras
+│   │   ├── shell/                  # Navegación (barra lateral / barra inferior) y tema
+│   │   ├── today/                  # Pantalla Hoy: calorías, macros, agua, actividad y comidas
+│   │   ├── add-meal/               # Hoja para agregar comida y resultado del análisis
+│   │   ├── auth/                   # Login y registro
+│   │   ├── profile/                # Perfil, metas y Google Fit
+│   │   └── guest/                  # Modo invitado
+│   ├── api/                        # analyze-food, analyze-text, health y auth de Google Fit
+│   ├── globals.css                 # Colores del tema (claro/oscuro) y tipografías
 │   ├── layout.tsx                  # Layout raíz con metadata
-│   └── page.tsx                    # Página principal multi-usuario
+│   ├── providers.tsx               # Tema, animaciones y avisos
+│   └── page.tsx                    # Contenedor: decide qué pantalla mostrar
+├── hooks/                          # Sesión, datos del día, análisis y sincronización de salud
 ├── lib/
+│   ├── ai/                         # Proveedores de IA, contrato y motor de reintentos
 │   └── calorie-calculator.ts       # Lógica de cálculo de calorías
 ├── public/                         # Recursos estáticos
 ├── context/                        # 📁 Documentación del proyecto
@@ -253,10 +258,10 @@ npm run lint         # Ejecuta ESLint
 ### ✅ Implementado
 - ✅ Sistema multi-usuario con autenticación Email/Password
 - ✅ **Modo Invitado** para probar sin registro
-- ✅ Formulario de login y registro (AuthForm)
-- ✅ Configuración de perfil biométrico completo (ProfileSetup)
+- ✅ Formulario de login y registro (`auth/AuthScreen`)
+- ✅ Configuración de perfil biométrico completo (`profile/ProfileScreen`)
 - ✅ Calculadora de calorías con fórmulas científicas (Mifflin-St Jeor)
-- ✅ Dashboard con barras de progreso visual (ProgressDashboard)
+- ✅ Pantalla del día con anillo de calorías y barras de macros (`today/TodayScreen`)
 - ✅ API Route serverless segura para Gemini AI
 - ✅ Captura y análisis de imágenes
 - ✅ Almacenamiento segregado por usuario en Firestore
