@@ -20,6 +20,7 @@ Que el análisis por foto y por texto responda siempre o falle con un mensaje cl
 ## Decisiones
 - Usuarios: el dueño y conocidos. Con sesión, uso normal con límite por usuario; invitado, 5 análisis por día por IP.
 - Respaldo: Gemini, GitHub Models y Groq, todos en plan gratuito.
+  - Actualización 2026-10-10: el primer diagnóstico en producción mostró que GitHub Models ya no existe (GitHub lo retiró el 30/07/2026). Se quitó del código; los proveedores son Gemini y Groq.
 - El modelo devuelve un desglose por alimento; el servidor suma los totales y el usuario puede ajustar gramos antes de guardar.
 
 ## Diseño

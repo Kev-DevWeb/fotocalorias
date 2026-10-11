@@ -2,16 +2,15 @@ import { TtlCache, textCacheKey } from './cache';
 import type { AnalysisData } from './contract';
 import { runEngine, type Candidate, type EngineResult } from './engine';
 import { geminiProvider } from './providers/gemini';
-import { githubModelsProvider, groqProvider } from './providers/openai-compatible';
+import { groqProvider } from './providers/openai-compatible';
 import type { AnalysisInput, NutritionProvider } from './types';
 
 const PROVIDERS: Record<string, NutritionProvider> = {
   gemini: geminiProvider,
-  github: githubModelsProvider,
   groq: groqProvider,
 };
 
-const DEFAULT_ORDER = 'gemini,github,groq';
+const DEFAULT_ORDER = 'gemini,groq';
 // Presupuesto total por petición (Vercel maxDuration = 30 s)
 const TOTAL_BUDGET_MS = 25_000;
 const MAX_ATTEMPT_MS = 15_000;

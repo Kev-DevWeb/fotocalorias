@@ -1,7 +1,7 @@
 import { geminiResponseSchema } from '../contract';
 import { fetchWithTimeout } from '../fetch-timeout';
 import { modelsFor, SAMPLING } from '../models';
-import { ProviderError, type NutritionProvider } from '../types';
+import { ProviderError, readProviderJson, type NutritionProvider } from '../types';
 
 // La comida no debería activar filtros, pero una foto con personas sí puede hacerlo
 const SAFETY_SETTINGS = [
@@ -45,7 +45,8 @@ export const geminiProvider: NutritionProvider = {
       throw new ProviderError('gemini', `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`, response.status);
     }
 
-    const result = await response.json();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- respuesta externa sin tipos
+    const result: any = await readProviderJson('gemini', response);
     const blockReason = result.promptFeedback?.blockReason;
     if (blockReason) throw new ProviderError('gemini', `Petición bloqueada (${blockReason})`);
 
