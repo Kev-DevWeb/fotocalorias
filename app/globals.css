@@ -1,26 +1,169 @@
 @import "tailwindcss";
 
+/* El tema lo pone next-themes como clase en <html> */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/*
+  Sistema visual "pegatinas de mercado".
+  Los colores son semánticos y cambian solos con el tema: en los componentes
+  casi nunca hace falta el prefijo dark:.
+*/
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --ground: #faf4e6; /* masa */
+  --dots: #e6dcc6;
+  --card: #fffdf7;
+  --ink: #231a2b;
+  --ink-2: #5b5063;
+  --ink-3: #6f6478;
+  --line: #e6dcc6;
+  --outline: #231a2b; /* contorno de tarjetas */
+  --shadow: #231a2b; /* sombra dura */
+  --inverse: #231a2b;
+  --on-inverse: #faf4e6;
+  /* Contorno y texto sobre fondos de color: igual en ambos temas */
+  --sticker: #231a2b;
+
+  --mango: #ffb81f;
+  --mango-soft: #ffe7b0;
+  --guayaba: #ff93a6;
+  --guayaba-soft: #ffd9df;
+
+  /* Datos: validados para daltonismo con el script de la skill dataviz */
+  --protein: #b02a63;
+  --protein-soft: #f3dce6;
+  --carbs: #e06a1f;
+  --carbs-soft: #fae2d2;
+  --fat: #2f9e5b;
+  --fat-soft: #d8eedf;
+  --water: #2a84d6;
+  --water-soft: #d5e8f8;
+  --track: #efe7d6;
+
+  --danger: #b3261e;
+  --danger-fill: #c8372d;
+  --danger-soft: #fbe3e0;
+  --scrim: rgb(35 26 43 / 0.55);
+}
+
+.dark {
+  --ground: #1a1220;
+  --dots: #2e2338;
+  --card: #2a2033;
+  --ink: #faf4e6;
+  --ink-2: #c9bfd1;
+  --ink-3: #a79cb0;
+  --line: #4a3d55;
+  --outline: #4a3d55;
+  --shadow: #faf4e6;
+  --inverse: #faf4e6;
+  --on-inverse: #231a2b;
+
+  --mango-soft: #4a3a14;
+  --guayaba-soft: #4d2a33;
+
+  --protein: #c94f84;
+  --protein-soft: #45283a;
+  --carbs: #d9772b;
+  --carbs-soft: #49301f;
+  --fat: #3da65a;
+  --fat-soft: #213d2c;
+  --water: #4a90e0;
+  --water-soft: #22364f;
+  --track: #3a2f45;
+
+  --danger: #ff9a8f;
+  --danger-fill: #e5574d;
+  --danger-soft: #4a2623;
+  --scrim: rgb(0 0 0 / 0.65);
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-ground: var(--ground);
+  --color-card: var(--card);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-ink-3: var(--ink-3);
+  --color-line: var(--line);
+  --color-outline: var(--outline);
+  --color-inverse: var(--inverse);
+  --color-on-inverse: var(--on-inverse);
+  --color-sticker: var(--sticker);
+  --color-mango: var(--mango);
+  --color-mango-soft: var(--mango-soft);
+  --color-guayaba: var(--guayaba);
+  --color-guayaba-soft: var(--guayaba-soft);
+  --color-protein: var(--protein);
+  --color-protein-soft: var(--protein-soft);
+  --color-carbs: var(--carbs);
+  --color-carbs-soft: var(--carbs-soft);
+  --color-fat: var(--fat);
+  --color-fat-soft: var(--fat-soft);
+  --color-water: var(--water);
+  --color-water-soft: var(--water-soft);
+  --color-track: var(--track);
+  --color-danger: var(--danger);
+  --color-danger-fill: var(--danger-fill);
+  --color-danger-soft: var(--danger-soft);
+  --color-scrim: var(--scrim);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+  --font-sans: var(--font-onest), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-bricolage), "Trebuchet MS", ui-sans-serif, sans-serif;
+
+  --shadow-sticker-sm: 3px 3px 0 var(--shadow);
+  --shadow-sticker: 4px 4px 0 var(--shadow);
+  --shadow-sticker-lg: 5px 5px 0 var(--shadow);
+  --shadow-sticker-mango: 4px 4px 0 var(--mango);
+
+  --animate-float: float 5s ease-in-out infinite;
+
+  @keyframes float {
+    0%, 100% { translate: 0 0; }
+    50% { translate: 0 -6px; }
   }
 }
 
+html {
+  color-scheme: light;
+}
+html.dark {
+  color-scheme: dark;
+}
+
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  background-color: var(--ground);
+  background-image: radial-gradient(var(--dots) 1.2px, transparent 1.2px);
+  background-size: 18px 18px;
+  color: var(--ink);
+  font-family: var(--font-sans);
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* Foco visible y consistente para teclado. Va en la capa base para que una utilidad pueda ajustarlo. */
+@layer base {
+  :focus-visible {
+    outline: 3px solid var(--water);
+    outline-offset: 2px;
+  }
+}
+
+/* Los campos numéricos no muestran flechas: se escribe el valor */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
