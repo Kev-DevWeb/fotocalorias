@@ -1,7 +1,7 @@
 import { strictJsonSchema } from '../contract';
 import { fetchWithTimeout } from '../fetch-timeout';
 import { modelsFor, SAMPLING } from '../models';
-import { ProviderError, type NutritionProvider } from '../types';
+import { ProviderError, readProviderJson, type NutritionProvider } from '../types';
 
 interface OpenAICompatibleConfig {
   id: string;
@@ -16,7 +16,7 @@ interface OpenAICompatibleConfig {
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
-/** Proveedor para cualquier API compatible con OpenAI Chat Completions (GitHub Models, Groq...). */
+/** Proveedor para cualquier API compatible con OpenAI Chat Completions (Groq y similares). */
 export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): NutritionProvider {
   return {
     id: cfg.id,
@@ -59,7 +59,8 @@ export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): Nut
         throw new ProviderError(cfg.id, `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`, response.status);
       }
 
-      const result = await response.json();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any -- respuesta externa sin tipos
+      const result: any = await readProviderJson(cfg.id, response);
       const choice = result.choices?.[0];
       const finishReason = choice?.finish_reason ?? 'desconocido';
       const text = choice?.message?.content;
@@ -69,15 +70,6 @@ export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): Nut
     },
   };
 }
-
-// GitHub Models: gratis con una cuenta de GitHub (PAT con permiso models:read).
-export const githubModelsProvider = createOpenAICompatibleProvider({
-  id: 'github',
-  baseUrl: 'https://models.github.ai/inference',
-  apiKeyEnv: 'GITHUB_MODELS_TOKEN',
-  models: modelsFor.github,
-  responseFormat: 'json_schema',
-});
 
 // Groq: plan gratuito, muy rápido. Acepta imágenes en base64 de hasta 4 MB.
 export const groqProvider = createOpenAICompatibleProvider({

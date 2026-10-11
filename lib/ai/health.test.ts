@@ -58,6 +58,12 @@ test('una salida fuera de contrato requiere acción', async () => {
   assert.equal(health.status, 'fail');
 });
 
+test('un servicio retirado que responde 200 sin JSON requiere acción, no es transitorio', async () => {
+  const [health] = await checkCandidates([fake('retirado/m', () => { throw new ProviderError('retirado', 'El endpoint no devolvió JSON (HTTP 200): "OK"', 200, true); })]);
+  assert.equal(health.status, 'fail');
+  assert.match(health.text.detail ?? '', /no devolvió JSON/);
+});
+
 test('un candidato que no acepta imágenes se marca como tal', async () => {
   const [health] = await checkCandidates([fake('solo-texto/m', () => FOOD, false)]);
   assert.equal(health.image.status, 'fail');

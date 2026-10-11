@@ -38,7 +38,7 @@ async function run(candidate: Candidate, input: AnalysisInput) {
 }
 
 (async () => {
-  const candidates = getCandidates('gemini,github,groq');
+  const candidates = getCandidates('gemini,groq');
   if (candidates.length === 0) {
     console.log('Sin API keys en el entorno: no hay nada que probar.');
     return;

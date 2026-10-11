@@ -7,12 +7,11 @@ Cómo está montado el reconocimiento por foto y texto, qué configurar y qué h
 | Variable | Para qué | Obligatoria |
 |---|---|---|
 | `GEMINI_API_KEY` | Proveedor principal | Sí |
-| `GITHUB_MODELS_TOKEN` | Respaldo 1. Token personal con permiso "Models: read" | Recomendada |
-| `GROQ_API_KEY` | Respaldo 2 | Recomendada |
+| `GROQ_API_KEY` | Proveedor de respaldo | Recomendada |
 | `NEXT_PUBLIC_FIREBASE_PROJECT_ID` | El servidor verifica con él la sesión del usuario | Sí |
 | `HEALTH_TOKEN` | Protege el diagnóstico profundo | Para el monitoreo |
-| `AI_PROVIDERS` | Orden de proveedores. Por defecto `gemini,github,groq` | No |
-| `GEMINI_MODELS`, `GITHUB_MODELS_MODELS`, `GROQ_MODELS` | Cambiar de modelo sin tocar código (lista separada por comas) | No |
+| `AI_PROVIDERS` | Orden de proveedores. Por defecto `gemini,groq` | No |
+| `GEMINI_MODELS`, `GROQ_MODELS` | Cambiar de modelo sin tocar código (lista separada por comas) | No |
 | `USER_HOURLY_LIMIT`, `USER_DAILY_LIMIT`, `GUEST_DAILY_LIMIT` | Límites de uso. Por defecto 30, 150 y 5 | No |
 
 Después de cambiar una variable en Vercel hay que volver a desplegar para que aplique.
@@ -57,9 +56,10 @@ Para activarlo, crea el secreto `HEALTH_TOKEN` en el repositorio (Settings → S
 
 | Detalle del candidato | Causa probable | Qué hacer |
 |---|---|---|
-| `HTTP 404` o "model not found" | El proveedor retiró el modelo | Poner el modelo vigente en `GEMINI_MODELS`, `GITHUB_MODELS_MODELS` o `GROQ_MODELS` y volver a desplegar |
+| `HTTP 404` o "model not found" | El proveedor retiró el modelo | Poner el modelo vigente en `GEMINI_MODELS` o `GROQ_MODELS` y volver a desplegar |
 | `HTTP 401` o `403` | La key venció o perdió permisos | Generar otra key y actualizarla en Vercel |
 | "Inventó comida en una imagen en blanco" o "No se encontró JSON" | El modelo no sigue el contrato | Cambiar de modelo en ese proveedor |
+| "El endpoint no devolvió JSON" | El proveedor retiró o movió su API | Buscar el aviso del proveedor; si el servicio cerró, quitarlo de `AI_PROVIDERS` y del código |
 | Todos en `transient` con `HTTP 429` | Se agotaron las cuotas gratuitas del día | Esperar al día siguiente; si se repite, agregar otro proveedor |
 | Todos en `transient` con `HTTP 503` o `timeout` | Saturación general | Volver a correr el workflow más tarde |
 

@@ -173,6 +173,20 @@ test('un error fatal (key inválida, modelo inexistente) no se reintenta', async
   assert.equal(down.calls, 2);
 });
 
+test('un proveedor retirado (200 sin JSON) se descarta y no se reintenta', async () => {
+  const retired = fake('retirado/m', async () => { throw new ProviderError('retirado', 'El endpoint no devolvió JSON (HTTP 200): "OK"', 200, true); });
+  const good = fake('b/m', async () => FOOD);
+  const result = await runEngine(INPUT, opts([retired, good]));
+  assert.ok(result.ok);
+  assert.equal(result.data.model_used, 'b/m');
+  assert.deepEqual(result.attempts.map((x) => x.outcome), ['fatal', 'success']);
+
+  const alone = fake('retirado/m', async () => { throw new ProviderError('retirado', 'El endpoint no devolvió JSON (HTTP 200): "OK"', 200, true); });
+  const down = await runEngine(INPUT, opts([alone]));
+  assert.equal(!down.ok && down.code, 'UPSTREAM_UNAVAILABLE');
+  assert.equal(alone.calls, 1);
+});
+
 test('un resultado imposible se usa solo si nadie da algo mejor', async () => {
   const bad = fake('a/m', async () => IMPOSSIBLE);
   const good = fake('b/m', async () => FOOD);

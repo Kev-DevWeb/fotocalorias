@@ -88,7 +88,7 @@ async function attempt(cand: Candidate, input: AnalysisInput, prompt: string, ti
       : { type: 'implausible', data: result.data, detail: result.data.warnings[0] };
   } catch (error) {
     const detail = describe(error);
-    if (error instanceof ProviderError && error.status !== undefined && FATAL_STATUS.has(error.status)) {
+    if (error instanceof ProviderError && (error.fatal || (error.status !== undefined && FATAL_STATUS.has(error.status)))) {
       return { type: 'fatal', detail };
     }
     return { type: 'retryable', detail };
