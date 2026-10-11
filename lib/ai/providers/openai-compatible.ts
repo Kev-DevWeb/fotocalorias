@@ -16,6 +16,13 @@ interface OpenAICompatibleConfig {
 
 const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
 
+// El plan gratuito de Groq limita los tokens de salida por minuto y cuenta este
+// máximo como reservado en cada petición: con 2048 rechazaba con 429 ("Request
+// too large ... OTPM") a unas 3 peticiones por minuto. Un platillo de 5
+// alimentos ocupa unos 450 tokens; si una respuesta no cabe, el motor pasa al
+// siguiente candidato.
+const MAX_OUTPUT_TOKENS = 1024;
+
 /** Proveedor para cualquier API compatible con OpenAI Chat Completions (Groq y similares). */
 export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): NutritionProvider {
   return {
@@ -49,14 +56,15 @@ export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): Nut
         body: JSON.stringify({
           model,
           ...SAMPLING,
-          max_tokens: 2048,
+          max_tokens: MAX_OUTPUT_TOKENS,
           response_format,
           messages: [{ role: 'user', content }],
         }),
       }, timeoutMs, signal);
 
       if (!response.ok) {
-        throw new ProviderError(cfg.id, `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`, response.status);
+        // 600 caracteres: los avisos de límite traen las cifras (límite, usado, pedido) al final
+        throw new ProviderError(cfg.id, `HTTP ${response.status}: ${(await response.text()).slice(0, 600)}`, response.status);
       }
 
       // eslint-disable-next-line @typescript-eslint/no-explicit-any -- respuesta externa sin tipos
