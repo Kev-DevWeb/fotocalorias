@@ -18,7 +18,20 @@ export function jsonResponse(body: unknown, status: number, headers?: Record<str
   });
 }
 
-function parseInput(body: Record<string, unknown>, kind: AnalysisInput['kind']): AnalysisInput {
+/** Lee el cuerpo como objeto JSON. Lanza InputError si no lo es. */
+export async function readJsonBody(request: NextRequest): Promise<Record<string, unknown>> {
+  let body: unknown;
+  try {
+    body = await request.json();
+  } catch {
+    throw new InputError('INVALID_INPUT', 'El cuerpo de la petición no es JSON válido.');
+  }
+  if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InputError('INVALID_INPUT');
+  return body as Record<string, unknown>;
+}
+
+/** Valida y limpia la comida a analizar. Lanza InputError si no sirve. */
+export function parseInput(body: Record<string, unknown>, kind: AnalysisInput['kind']): AnalysisInput {
   if (kind === 'text') {
     return { kind: 'text', description: cleanText(body.description, { min: 3, max: 500 }) };
   }
@@ -32,15 +45,7 @@ function parseInput(body: Record<string, unknown>, kind: AnalysisInput['kind']):
 /** Flujo común de /api/analyze-food y /api/analyze-text. */
 export async function handleAnalyzeRequest(request: NextRequest, kind: AnalysisInput['kind']): Promise<NextResponse> {
   try {
-    let body: unknown;
-    try {
-      body = await request.json();
-    } catch {
-      throw new InputError('INVALID_INPUT', 'El cuerpo de la petición no es JSON válido.');
-    }
-    if (!body || typeof body !== 'object' || Array.isArray(body)) throw new InputError('INVALID_INPUT');
-
-    const input = parseInput(body as Record<string, unknown>, kind);
+    const input = parseInput(await readJsonBody(request), kind);
 
     // Solo las peticiones válidas gastan cuota
     const access = await resolveAccess(request);

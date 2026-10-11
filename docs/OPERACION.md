@@ -65,6 +65,18 @@ Para activarlo, crea el secreto `HEALTH_TOKEN` en el repositorio (Settings → S
 
 Un solo candidato en `transient` no hace fallar el monitoreo: los demás cubren.
 
+## Comparar modelos
+Para decidir cuál modelo conviene de principal, el workflow `.github/workflows/compare.yml` ("Comparar modelos") pasa las mismas comidas por cada candidato por separado, sin respaldo ni caché. Se lanza a mano desde la pestaña Actions y deja una línea `RESULT {...}` por comida con las calorías, los macros y el tiempo de cada modelo. Repetir cada comida (`rounds`) muestra si el modelo responde siempre igual.
+
+Lo mismo con una sola comida:
+
+```bash
+curl -H "x-health-token: $HEALTH_TOKEN" -H "content-type: application/json" \
+  -d '{"description":"2 tortillas de maíz"}' https://xcal-fawn.vercel.app/api/health
+```
+
+El orden de los proveedores se cambia con `AI_PROVIDERS` (por ejemplo `groq,gemini`).
+
 ## Límites conocidos
 - Los contadores de uso viven en la memoria de cada instancia del servidor y se reinician con cada despliegue. Frenan el uso normal, no un ataque decidido. `lib/rate-limit.ts` define la interfaz para cambiarlos por un almacén externo.
 - La caché que hace que la misma descripción devuelva los mismos números también es por instancia y dura 24 horas.

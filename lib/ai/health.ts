@@ -1,3 +1,4 @@
+import type { AnalysisData } from './contract';
 import { runEngine, type Candidate } from './engine';
 import type { AnalysisInput } from './types';
 
@@ -36,15 +37,20 @@ export interface CandidateHealth {
 
 const failure = (ms: number, detail: string): ProbeResult => ({ status: TRANSIENT.test(detail) ? 'transient' : 'fail', ms, detail });
 
-async function probe(candidate: Candidate, input: AnalysisInput, expect: 'food' | 'no_food'): Promise<ProbeResult> {
-  const started = Date.now();
-  const result = await runEngine(input, {
+/** Un candidato solo: sin respaldo, sin reintentos y sin caché. */
+function runAlone(candidate: Candidate, input: AnalysisInput) {
+  return runEngine(input, {
     candidates: [candidate],
     hedgeAfterMs: 60_000,
     totalBudgetMs: 20_000,
     maxAttemptMs: 20_000,
     passes: 1,
   });
+}
+
+async function probe(candidate: Candidate, input: AnalysisInput, expect: 'food' | 'no_food'): Promise<ProbeResult> {
+  const started = Date.now();
+  const result = await runAlone(candidate, input);
   const ms = Date.now() - started;
   const lastDetail = result.attempts.at(-1)?.detail;
 
@@ -68,6 +74,30 @@ export async function checkCandidates(candidates: Candidate[]): Promise<Candidat
         : Promise.resolve<ProbeResult>({ status: 'fail', ms: 0, detail: 'No acepta imágenes' }),
     ]);
     return { id: candidate.id, status: worst(text.status, image.status), text, image };
+  }));
+}
+
+export interface CandidateAnswer {
+  id: string;
+  ms: number;
+  /** Lo que respondió el candidato */
+  data?: AnalysisData;
+  /** Por qué no hubo respuesta */
+  detail?: string;
+}
+
+/**
+ * Pasa la misma comida por cada candidato, por separado, para comparar modelos
+ * entre sí: qué calorías da cada uno y cuánto tarda.
+ */
+export async function compareCandidates(candidates: Candidate[], input: AnalysisInput): Promise<CandidateAnswer[]> {
+  return Promise.all(candidates.map(async (candidate) => {
+    const started = Date.now();
+    const result = await runAlone(candidate, input);
+    const ms = Date.now() - started;
+    if (result.ok) return { id: candidate.id, ms, data: result.data };
+    const detail = result.code === 'NO_FOOD' ? `NO_FOOD: ${result.reason}` : result.attempts.at(-1)?.detail ?? result.code;
+    return { id: candidate.id, ms, detail };
   }));
 }
 
