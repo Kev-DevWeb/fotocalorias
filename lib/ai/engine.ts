@@ -68,12 +68,15 @@ const FATAL_STATUS = new Set([400, 401, 403, 404, 413, 415, 422]);
 const MIN_ATTEMPT_MS = 1500;
 const TICK = Symbol('tick');
 
+// Los avisos de límite de los proveedores traen las cifras (límite, usado, pedido) al final del mensaje
+const MAX_DETAIL_CHARS = 450;
+
 function describe(error: unknown): string {
   if (error instanceof Error) {
     if (error.name === 'AbortError' || error.name === 'TimeoutError') return 'timeout';
-    return error.message.slice(0, 200);
+    return error.message.slice(0, MAX_DETAIL_CHARS);
   }
-  return String(error).slice(0, 200);
+  return String(error).slice(0, MAX_DETAIL_CHARS);
 }
 
 async function attempt(cand: Candidate, input: AnalysisInput, prompt: string, timeoutMs: number, signal: AbortSignal): Promise<Outcome> {
