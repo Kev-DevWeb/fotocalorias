@@ -1,0 +1,48 @@
+name: Comparar modelos
+
+# Pasa las mismas comidas por cada modelo de IA en producción, por separado,
+# para decidir cuál conviene de principal. Se lanza a mano desde Actions.
+
+on:
+  workflow_dispatch:
+    inputs:
+      meals:
+        description: Comidas a comparar, separadas por |
+        default: >-
+          1 huevo cocido grande|1 plátano mediano|100 g de arroz blanco cocido|1 cucharada de aceite de oliva|1 lata de Coca-Cola de 355 ml|100 g de pechuga de pollo a la plancha sin piel|1 taza de leche entera de 240 ml|2 tortillas de maíz|3 tacos al pastor con piña, cebolla y cilantro|1 taza de café con 6 galletas de mazapán y una guayaba|un plato de chilaquiles verdes con pollo, crema y queso
+      rounds:
+        description: Veces que se repite cada comida (2 o más mide si el modelo responde siempre igual)
+        default: '2'
+      pause:
+        description: Segundos entre peticiones (el plan gratuito de Groq limita por minuto)
+        default: '20'
+
+jobs:
+  compare:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ vars.APP_URL || 'https://xcal-fawn.vercel.app' }}
+      HEALTH_TOKEN: ${{ secrets.HEALTH_TOKEN }}
+      MEALS: ${{ inputs.meals }}
+      ROUNDS: ${{ inputs.rounds }}
+      PAUSE: ${{ inputs.pause }}
+    steps:
+      - name: Comparar en producción
+        run: |
+          if [ -z "$HEALTH_TOKEN" ]; then
+            echo "::error::Falta el secreto HEALTH_TOKEN en el repositorio"
+            exit 1
+          fi
+          IFS='|' read -ra meals <<< "$MEALS"
+          for round in $(seq 1 "$ROUNDS"); do
+            for meal in "${meals[@]}"; do
+              body=$(jq -cn --arg d "$meal" '{description: $d}')
+              answer=$(curl -sS --max-time 40 -H 'content-type: application/json' \
+                -H "x-health-token: $HEALTH_TOKEN" -d "$body" "$APP_URL/api/health" || echo '{"error":"sin respuesta"}')
+              # Una línea por comida y ronda, para leerla después desde el log
+              line=$(printf '%s' "$answer" | jq -c --arg meal "$meal" --argjson round "$round" '{meal: $meal, round: $round, answer: .}' 2>/dev/null) \
+                || line=$(jq -cn --arg meal "$meal" --argjson round "$round" '{meal: $meal, round: $round, answer: {error: "respuesta no JSON"}}')
+              echo "RESULT $line"
+              sleep "$PAUSE"
+            done
+          done
