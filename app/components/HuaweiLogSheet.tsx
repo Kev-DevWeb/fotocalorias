@@ -2,7 +2,7 @@
 
 import { useState } from 'react';
 import { Check, Copy, ExternalLink } from 'lucide-react';
-import { buildClipboardText, formatForHuawei, huaweiIntentUrl, isAndroid, type HuaweiLoggable } from '@/lib/huawei-health';
+import { buildClipboardText, formatForHuawei, HUAWEI_APP_URL, isAndroid, type HuaweiLoggable } from '@/lib/huawei-health';
 import { Button } from './ui/Button';
 import { MacroDot, type MacroKey } from './ui/dataviz';
 import { Sheet } from './ui/Sheet';
@@ -56,7 +56,7 @@ function HuaweiValues({ log, onMarkLogged, onClose }: { log: Loggable } & Pick<H
 
   const copyAndOpen = async () => {
     await copyValue('texto', buildClipboardText(log));
-    if (isAndroid()) window.location.href = huaweiIntentUrl();
+    if (isAndroid()) window.location.href = HUAWEI_APP_URL;
   };
 
   const markLogged = async () => {

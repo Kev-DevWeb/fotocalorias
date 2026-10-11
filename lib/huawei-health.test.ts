@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { formatForHuawei, buildClipboardText, huaweiIntentUrl, countPendingHuawei, HUAWEI_PACKAGE } from './huawei-health';
+import { formatForHuawei, buildClipboardText, HUAWEI_APP_URL, countPendingHuawei } from './huawei-health';
 
 const log = { food_name: '  Tacos al pastor ', calories: 449.6, protein: 20.4, carbs: 40.5, fat: 18, meal_type: 'cena' as const };
 
@@ -18,12 +18,8 @@ test('buildClipboardText', () => {
   assert.equal(buildClipboardText(log), 'Tacos al pastor - 450 kcal');
 });
 
-test('huaweiIntentUrl abre el paquete con fallback a Play Store', () => {
-  const url = huaweiIntentUrl();
-  assert.ok(url.startsWith('intent://#Intent;'));
-  assert.ok(url.includes(`package=${HUAWEI_PACKAGE};`));
-  assert.ok(url.includes('S.browser_fallback_url=' + encodeURIComponent(`https://play.google.com/store/apps/details?id=${HUAWEI_PACKAGE}`)));
-  assert.ok(url.endsWith(';end'));
+test('el enlace a Huawei Health usa su esquema propio, no un intent ni una tienda', () => {
+  assert.equal(HUAWEI_APP_URL, 'huaweischeme://healthapp/home/main');
 });
 
 test('countPendingHuawei cuenta los no registrados', () => {
