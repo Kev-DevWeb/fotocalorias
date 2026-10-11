@@ -1,73 +1,82 @@
-import { nutritionDataSchema, normalizeNutrition, type ValidatedNutritionData } from '@/lib/schemas';
-import { extractJson } from './extract-json';
-import { buildPrompt } from './prompt';
+import { TtlCache, textCacheKey } from './cache';
+import type { AnalysisData } from './contract';
+import { runEngine, type Candidate, type EngineResult } from './engine';
 import { geminiProvider } from './providers/gemini';
-import { githubModelsProvider, groqProvider, openRouterProvider } from './providers/openai-compatible';
+import { githubModelsProvider, groqProvider } from './providers/openai-compatible';
 import type { AnalysisInput, NutritionProvider } from './types';
 
-const ALL_PROVIDERS: Record<string, NutritionProvider> = {
+const PROVIDERS: Record<string, NutritionProvider> = {
   gemini: geminiProvider,
   github: githubModelsProvider,
   groq: groqProvider,
-  openrouter: openRouterProvider,
 };
 
-const DEFAULT_ORDER = 'github,gemini,groq,openrouter';
-// Presupuesto total por petición (Vercel maxDuration = 30 s); se reparte entre proveedores
+const DEFAULT_ORDER = 'gemini,github,groq';
+// Presupuesto total por petición (Vercel maxDuration = 30 s)
 const TOTAL_BUDGET_MS = 25_000;
-const MAX_PER_PROVIDER_MS = 12_000;
+const MAX_ATTEMPT_MS = 15_000;
+// Una respuesta normal tarda 1–2.5 s (texto) o 2–4 s (imagen); pasado eso se lanza otra en paralelo
+const HEDGE_AFTER_MS = { text: 2_500, image: 4_500 };
 
-export function getProviderChain(order = process.env.AI_PROVIDERS || DEFAULT_ORDER): NutritionProvider[] {
-  return order
-    .split(',')
-    .map((id) => ALL_PROVIDERS[id.trim().toLowerCase()])
-    .filter((p): p is NutritionProvider => Boolean(p) && p.isConfigured());
-}
-
-export type AnalysisResult =
-  | { ok: true; data: ValidatedNutritionData | { error: string; model_used?: string } }
-  | { ok: false; error: string; attempts: string[] };
-
-/** Parsea y valida la respuesta cruda de un modelo. Lanza si no es utilizable. */
-export function parseModelOutput(text: string): ValidatedNutritionData | { error: string } {
-  const json = extractJson(text);
-  if (!json) throw new Error('No se encontró JSON en la respuesta');
-  const normalized = normalizeNutrition(JSON.parse(json));
-  if (typeof normalized.error === 'string' && !normalized.food_name) {
-    return { error: normalized.error };
-  }
-  delete normalized.error;
-  return nutritionDataSchema.parse(normalized);
-}
+const textCache = new TtlCache<AnalysisData>(200, 24 * 60 * 60 * 1000);
 
 /**
- * Prueba cada proveedor configurado en orden. Si uno falla (HTTP, timeout o JSON
- * inválido según Zod) pasa al siguiente, en vez de devolver el error al usuario.
+ * Candidatos en orden: primero el modelo principal de cada proveedor
+ * configurado, después los secundarios.
  */
-export async function analyzeWithFallback(input: AnalysisInput, chain = getProviderChain()): Promise<AnalysisResult> {
-  if (chain.length === 0) {
-    return { ok: false, error: 'No hay proveedores de IA configurados (revisa las API keys)', attempts: [] };
-  }
+export function getCandidates(order = process.env.AI_PROVIDERS || DEFAULT_ORDER): Candidate[] {
+  const providers = [...new Set(
+    order
+      .split(',')
+      .map((id) => PROVIDERS[id.trim().toLowerCase()])
+      .filter((p): p is NutritionProvider => Boolean(p) && p.isConfigured()),
+  )];
 
-  const prompt = buildPrompt(input);
-  const attempts: string[] = [];
-  const deadline = Date.now() + TOTAL_BUDGET_MS;
-
-  for (const provider of chain) {
-    const remaining = deadline - Date.now();
-    if (remaining < 2_000) break;
-    const started = Date.now();
-    try {
-      const { text, model } = await provider.generate(input, prompt, Math.min(MAX_PER_PROVIDER_MS, remaining));
-      const data = parseModelOutput(text);
-      console.log(`✅ ${provider.id}/${model} respondió en ${Date.now() - started} ms`);
-      return { ok: true, data: { ...data, model_used: `${provider.id}/${model}` } };
-    } catch (error) {
-      const msg = error instanceof Error ? (error.name === 'AbortError' ? 'timeout' : error.message) : String(error);
-      console.warn(`⚠️ ${provider.id} falló tras ${Date.now() - started} ms: ${msg.slice(0, 300)}`);
-      attempts.push(`${provider.id}: ${msg.slice(0, 200)}`);
+  const candidates: Candidate[] = [];
+  const depth = Math.max(0, ...providers.map((p) => p.models().length));
+  for (let i = 0; i < depth; i++) {
+    for (const provider of providers) {
+      const model = provider.models()[i];
+      if (model) candidates.push({ id: `${provider.id}/${model}`, provider, model });
     }
   }
-
-  return { ok: false, error: 'Ningún proveedor de IA devolvió una respuesta válida', attempts };
+  return candidates;
 }
+
+/** Lista de proveedores conocidos y si tienen key, para /api/health. */
+export function listProviders(): { id: string; configured: boolean; models: string[] }[] {
+  return Object.values(PROVIDERS).map((p) => ({ id: p.id, configured: p.isConfigured(), models: p.models() }));
+}
+
+export async function analyze(input: AnalysisInput, candidates = getCandidates()): Promise<EngineResult> {
+  const cacheKey = input.kind === 'text' ? textCacheKey(input.description) : undefined;
+  if (cacheKey) {
+    const hit = textCache.get(cacheKey);
+    if (hit) return { ok: true, data: hit, attempts: [{ id: 'cache', ms: 0, outcome: 'success' }] };
+  }
+
+  const started = Date.now();
+  const result = await runEngine(input, {
+    candidates,
+    hedgeAfterMs: HEDGE_AFTER_MS[input.kind],
+    totalBudgetMs: TOTAL_BUDGET_MS,
+    maxAttemptMs: MAX_ATTEMPT_MS,
+  });
+
+  // Un log por petición, sin contenido del usuario
+  console.log(JSON.stringify({
+    evt: 'analysis',
+    kind: input.kind,
+    ok: result.ok,
+    code: result.ok ? undefined : result.code,
+    model: result.ok ? result.data.model_used : undefined,
+    ms: Date.now() - started,
+    attempts: result.attempts,
+  }));
+
+  if (cacheKey && result.ok && result.data.warnings.length === 0) textCache.set(cacheKey, result.data);
+  return result;
+}
+
+export { parseModelOutput } from './normalize';
+export type { Candidate, EngineResult } from './engine';

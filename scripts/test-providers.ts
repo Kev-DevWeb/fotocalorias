@@ -1,72 +1,84 @@
 /**
- * Compara los proveedores de IA: % de respuestas válidas según Zod y latencia.
+ * Prueba en vivo cada candidato de IA (proveedor + modelo) por separado:
+ * respuestas válidas, detección de "no es comida", consistencia y latencia.
  *
  *   npx tsx --env-file=.env.local scripts/test-providers.ts [foto1.jpg foto2.png ...]
  *
- * Sin API keys solo corre las pruebas offline de normalización.
+ * Solo prueba los proveedores que tengan su API key en el entorno.
  */
 import { readFileSync } from 'node:fs';
-import { extname } from 'node:path';
-import { getProviderChain, parseModelOutput } from '../lib/ai';
-import { buildPrompt } from '../lib/ai/prompt';
+import { getCandidates } from '../lib/ai';
+import { runEngine, type Candidate } from '../lib/ai/engine';
 import type { AnalysisInput } from '../lib/ai/types';
+import { cleanText, validateImage } from '../lib/ai/validate-input';
 
-// 1. Pruebas offline: respuestas "mal formadas" reales que antes rompían el parseo
-const MESSY_OUTPUTS = [
-  '```json\n{"food_name":"Tacos","calories":"450 kcal","protein":20.6,"carbs":40,"fat":18,"nova_group":0}\n```',
-  'Claro, aquí tienes: {"foodName":"Ensalada","kcal":180,"proteins":5,"carbohydrates":12,"fats":11,"sugar":null}',
-  '{"result":{"food_name":"Pizza","calories":800,"protein":30,"carbs":90,"fat":35,"detected_items":"queso, masa"}}',
-  '[{"name":"Manzana","calories":95,"protein":0,"carbs":25,"fat":0,"nova_group":7}]',
-  '{"error":"No se detectó comida"}',
-];
-let offlineOk = 0;
-for (const raw of MESSY_OUTPUTS) {
-  try {
-    const parsed = parseModelOutput(raw);
-    offlineOk++;
-    console.log('  ✓', JSON.stringify(parsed));
-  } catch (e) {
-    console.log('  ✗', raw.slice(0, 60), '→', (e as Error).message.slice(0, 120));
-  }
-}
-console.log(`Normalización offline: ${offlineOk}/${MESSY_OUTPUTS.length}\n`);
-
-// 2. Pruebas en vivo contra cada proveedor configurado
-const TEXTS = [
+const FOOD_TEXTS = [
   '2 tacos al pastor con piña y salsa verde',
+  '1 taza de café con 6 galletas de mazapán y una guayaba',
   'un plato de arroz blanco con pechuga de pollo a la plancha y ensalada',
   'una coca cola de 600 ml y unas papas sabritas',
   'avena con leche, plátano y una cucharada de crema de cacahuate',
-  'hamburguesa doble con queso y papas fritas medianas',
 ];
-const MIME: Record<string, string> = { '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png', '.webp': 'image/webp' };
-const inputs: AnalysisInput[] = [
-  ...TEXTS.map((description) => ({ kind: 'text' as const, description })),
-  ...process.argv.slice(2).map((file) => ({
-    kind: 'image' as const,
-    imageBase64: readFileSync(file).toString('base64'),
-    mimeType: MIME[extname(file).toLowerCase()] ?? 'image/jpeg',
-  })),
-];
+const NOT_FOOD_TEXTS = ['un ladrillo y tres tornillos', 'asdfgh qwerty zxcvb'];
+const CONSISTENCY_TEXT = FOOD_TEXTS[1];
+const CONSISTENCY_RUNS = 5;
+
+const text = (description: string): AnalysisInput => ({ kind: 'text', description: cleanText(description, { min: 3, max: 500 }) });
+
+function image(file: string): AnalysisInput {
+  const valid = validateImage(readFileSync(file).toString('base64'));
+  return { kind: 'image', imageBase64: valid.base64, mimeType: valid.mimeType };
+}
+
+/** Un solo intento contra un solo candidato, sin segunda vuelta que maquille los fallos. */
+async function run(candidate: Candidate, input: AnalysisInput) {
+  const started = Date.now();
+  const result = await runEngine(input, { candidates: [candidate], hedgeAfterMs: 60_000, totalBudgetMs: 20_000, maxAttemptMs: 20_000, passes: 1 });
+  return { result, ms: Date.now() - started };
+}
 
 (async () => {
-  const chain = getProviderChain('github,gemini,groq,openrouter');
-  if (chain.length === 0) console.log('Sin API keys configuradas: se omiten las pruebas en vivo.');
-  for (const provider of chain) {
-    let valid = 0;
+  const candidates = getCandidates('gemini,github,groq');
+  if (candidates.length === 0) {
+    console.log('Sin API keys en el entorno: no hay nada que probar.');
+    return;
+  }
+  const images = process.argv.slice(2);
+
+  for (const candidate of candidates) {
+    console.log(`\n=== ${candidate.id}`);
     const times: number[] = [];
-    for (const input of inputs) {
-      const t0 = Date.now();
-      try {
-        const { text } = await provider.generate(input, buildPrompt(input), 20_000);
-        parseModelOutput(text);
-        valid++;
-      } catch (e) {
-        console.log(`  ${provider.id} ✗ ${(e as Error).message.slice(0, 150)}`);
-      }
-      times.push(Date.now() - t0);
+
+    let valid = 0;
+    const foodInputs = [...FOOD_TEXTS.map(text), ...images.map(image)];
+    for (const input of foodInputs) {
+      const { result, ms } = await run(candidate, input);
+      times.push(ms);
+      if (result.ok) valid++;
+      else console.log(`  ✗ ${input.kind}: ${result.code} ${result.attempts.at(-1)?.detail ?? ''}`.slice(0, 220));
     }
+    console.log(`  comida válida:    ${valid}/${foodInputs.length}`);
+
+    let rejected = 0;
+    for (const description of NOT_FOOD_TEXTS) {
+      const { result, ms } = await run(candidate, text(description));
+      times.push(ms);
+      if (!result.ok && result.code === 'NO_FOOD') rejected++;
+      else console.log(`  ✗ "${description}" → ${result.ok ? `comida de ${result.data.calories} kcal` : result.code}`);
+    }
+    console.log(`  no comida:        ${rejected}/${NOT_FOOD_TEXTS.length} rechazadas`);
+
+    const kcals: (number | string)[] = [];
+    for (let i = 0; i < CONSISTENCY_RUNS; i++) {
+      const { result, ms } = await run(candidate, text(CONSISTENCY_TEXT));
+      times.push(ms);
+      kcals.push(result.ok ? result.data.calories : result.code);
+    }
+    const distinct = new Set(kcals).size;
+    console.log(`  consistencia:     ${distinct === 1 ? 'igual' : `${distinct} valores distintos`} en ${CONSISTENCY_RUNS} intentos (${kcals.join(', ')} kcal)`);
+
+    const sorted = [...times].sort((a, b) => a - b);
     const avg = Math.round(times.reduce((a, b) => a + b, 0) / times.length);
-    console.log(`${provider.id}: ${valid}/${inputs.length} válidas, ${avg} ms promedio`);
+    console.log(`  latencia:         ${avg} ms promedio, ${sorted.at(-1)} ms máximo`);
   }
 })();

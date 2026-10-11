@@ -44,10 +44,10 @@ export async function POST(request: NextRequest) {
       expiresAt,
     });
 
-  } catch (err: any) {
+  } catch (err) {
     console.error('❌ Error al refrescar token de Google Fit:', err);
     return NextResponse.json(
-      { error: err.message || 'Error interno del servidor al refrescar token' },
+      { error: (err instanceof Error ? err.message : '') || 'Error interno del servidor al refrescar token' },
       { status: 500 }
     );
   }

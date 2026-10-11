@@ -6,11 +6,16 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "lint:core": "eslint lib app/api scripts app/components/AnalysisEditor.tsx app/components/AnalysisErrorPanel.tsx app/components/StaleVersionBanner.tsx",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test \"lib/**/*.test.ts\"",
+    "test:providers": "tsx --env-file=.env.local scripts/test-providers.ts"
   },
   "dependencies": {
     "browser-image-compression": "^2.0.2",
     "firebase": "^12.6.0",
+    "jose": "^6.2.12",
     "lucide-react": "^0.554.0",
     "next": "^16.2.3",
     "react": "19.2.0",
@@ -26,6 +31,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.0.3",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

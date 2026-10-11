@@ -1,27 +1,34 @@
+import { strictJsonSchema } from '../contract';
 import { fetchWithTimeout } from '../fetch-timeout';
-import { strictJsonSchema } from '../prompt';
+import { modelsFor, SAMPLING } from '../models';
 import { ProviderError, type NutritionProvider } from '../types';
 
 interface OpenAICompatibleConfig {
   id: string;
   baseUrl: string;
   apiKeyEnv: string;
-  /** Modelo con visión (se usa para imagen y texto salvo que se defina textModel) */
-  model: string;
-  textModel?: string;
+  models: () => string[];
   /** 'json_schema' = structured outputs estricto; 'json_object' = JSON mode */
   responseFormat: 'json_schema' | 'json_object';
-  extraHeaders?: Record<string, string>;
+  /** Tamaño máximo de la imagen en base64 que acepta el endpoint */
+  maxImageBase64Chars?: number;
 }
 
-/** Proveedor para cualquier API compatible con OpenAI Chat Completions (GitHub Models, Groq, OpenRouter...). */
+const IMAGE_TYPES = ['image/jpeg', 'image/png', 'image/webp'];
+
+/** Proveedor para cualquier API compatible con OpenAI Chat Completions (GitHub Models, Groq...). */
 export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): NutritionProvider {
   return {
     id: cfg.id,
     isConfigured: () => Boolean(process.env[cfg.apiKeyEnv]),
+    models: cfg.models,
+    supports(input) {
+      if (input.kind !== 'image') return true;
+      if (!IMAGE_TYPES.includes(input.mimeType)) return false;
+      return !cfg.maxImageBase64Chars || input.imageBase64.length <= cfg.maxImageBase64Chars;
+    },
 
-    async generate(input, prompt, timeoutMs) {
-      const model = input.kind === 'text' ? cfg.textModel ?? cfg.model : cfg.model;
+    async generate({ input, prompt, model, timeoutMs, signal }) {
       const content = input.kind === 'image'
         ? [
             { type: 'text', text: prompt },
@@ -38,27 +45,27 @@ export function createOpenAICompatibleProvider(cfg: OpenAICompatibleConfig): Nut
         headers: {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${process.env[cfg.apiKeyEnv]}`,
-          ...cfg.extraHeaders,
         },
         body: JSON.stringify({
           model,
-          temperature: 0.2,
-          max_tokens: 1024,
+          ...SAMPLING,
+          max_tokens: 2048,
           response_format,
           messages: [{ role: 'user', content }],
         }),
-      }, timeoutMs);
+      }, timeoutMs, signal);
 
       if (!response.ok) {
         throw new ProviderError(cfg.id, `HTTP ${response.status}: ${(await response.text()).slice(0, 300)}`, response.status);
       }
 
       const result = await response.json();
-      const text = result.choices?.[0]?.message?.content;
-      if (!text) {
-        throw new ProviderError(cfg.id, `Sin texto en la respuesta (finish_reason: ${result.choices?.[0]?.finish_reason ?? 'desconocido'})`);
-      }
-      return { text, model };
+      const choice = result.choices?.[0];
+      const finishReason = choice?.finish_reason ?? 'desconocido';
+      const text = choice?.message?.content;
+      if (!text) throw new ProviderError(cfg.id, `Sin texto en la respuesta (finish_reason: ${finishReason})`);
+      if (finishReason === 'length') throw new ProviderError(cfg.id, 'Respuesta incompleta (finish_reason: length)');
+      return { text };
     },
   };
 }
@@ -68,25 +75,16 @@ export const githubModelsProvider = createOpenAICompatibleProvider({
   id: 'github',
   baseUrl: 'https://models.github.ai/inference',
   apiKeyEnv: 'GITHUB_MODELS_TOKEN',
-  model: process.env.GITHUB_MODELS_MODEL || 'openai/gpt-4.1-mini',
+  models: modelsFor.github,
   responseFormat: 'json_schema',
 });
 
-// Groq: plan gratuito, muy rápido. Llama 4 Scout tiene visión.
+// Groq: plan gratuito, muy rápido. Acepta imágenes en base64 de hasta 4 MB.
 export const groqProvider = createOpenAICompatibleProvider({
   id: 'groq',
   baseUrl: 'https://api.groq.com/openai/v1',
   apiKeyEnv: 'GROQ_API_KEY',
-  model: process.env.GROQ_MODEL || 'meta-llama/llama-4-scout-17b-16e-instruct',
+  models: modelsFor.groq,
   responseFormat: 'json_object',
-});
-
-// OpenRouter: modelos ":free" (opcional).
-export const openRouterProvider = createOpenAICompatibleProvider({
-  id: 'openrouter',
-  baseUrl: 'https://openrouter.ai/api/v1',
-  apiKeyEnv: 'OPENROUTER_API_KEY',
-  model: process.env.OPENROUTER_MODEL || 'google/gemma-3-27b-it:free',
-  responseFormat: 'json_object',
-  extraHeaders: { 'X-Title': 'fotocalorias' },
+  maxImageBase64Chars: 4_000_000,
 });

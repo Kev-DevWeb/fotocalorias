@@ -1,0 +1,31 @@
+name: Monitoreo diario
+
+# Prueba en vivo cada proveedor de IA en producción. Si un modelo fue retirado
+# o una key venció, este workflow falla y GitHub avisa por correo.
+
+on:
+  schedule:
+    - cron: '0 13 * * *' # 07:00 en Ciudad de México
+  workflow_dispatch:
+
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    env:
+      APP_URL: ${{ vars.APP_URL || 'https://xcal-fawn.vercel.app' }}
+      HEALTH_TOKEN: ${{ secrets.HEALTH_TOKEN }}
+    steps:
+      - name: Health profundo de producción
+        run: |
+          if [ -z "$HEALTH_TOKEN" ]; then
+            echo "::error::Falta el secreto HEALTH_TOKEN en el repositorio"
+            exit 1
+          fi
+          status=$(curl -sS -o health.json -w '%{http_code}' --max-time 60 \
+            -H "x-health-token: $HEALTH_TOKEN" "$APP_URL/api/health?deep=1")
+          cat health.json
+          echo
+          if [ "$status" != "200" ]; then
+            echo "::error::El health profundo respondió $status: revisa qué candidato falló en la salida de arriba"
+            exit 1
+          fi
