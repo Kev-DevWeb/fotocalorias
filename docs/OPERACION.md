@@ -81,6 +81,7 @@ El orden de los proveedores se cambia con `AI_PROVIDERS` (por ejemplo `groq,gemi
 - Los contadores de uso viven en la memoria de cada instancia del servidor y se reinician con cada despliegue. Frenan el uso normal, no un ataque decidido. `lib/rate-limit.ts` define la interfaz para cambiarlos por un almacén externo.
 - La caché que hace que la misma descripción devuelva los mismos números también es por instancia y dura 24 horas.
 - Las cuotas de los planes gratuitos cambian sin aviso; el dato vigente está en el panel de cada proveedor.
+- Groq gratuito (`qwen/qwen3.8-27b`), medido el 11/10/2026: 1,000 tokens de salida por minuto, contados sobre lo que realmente responde (bajar `max_tokens` de 2048 a 1024 no redujo los rechazos). Un alimento simple ocupa unos 130 tokens y un platillo de 5 alimentos unos 400, así que alcanza para unos 7 alimentos simples o 2 platillos por minuto; después responde 429 y el motor pasa a Gemini. También limita los tokens de entrada por minuto, que se agotan antes con fotos.
 
 ## Probar los proveedores en local
 Con las keys en `.env.local`:
