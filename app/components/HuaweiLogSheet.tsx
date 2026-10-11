@@ -3,6 +3,7 @@
 import { useState } from 'react';
 import { Check, Copy, ExternalLink } from 'lucide-react';
 import { buildClipboardText, formatForHuawei, HUAWEI_APP_URL, isAndroid, type HuaweiLoggable } from '@/lib/huawei-health';
+import { showHuaweiNotification, type NotifyResult } from '@/lib/huawei-notify';
 import { Button } from './ui/Button';
 import { MacroDot, type MacroKey } from './ui/dataviz';
 import { Sheet } from './ui/Sheet';
@@ -47,6 +48,7 @@ function HuaweiValues({ log, onMarkLogged, onClose }: { log: Loggable } & Pick<H
   const [copied, setCopied] = useState<string | null>(null);
   const [copyFailed, setCopyFailed] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [notice, setNotice] = useState<NotifyResult | null>(null);
 
   const copyValue = async (label: string, value: string) => {
     const ok = await copy(value);
@@ -55,7 +57,9 @@ function HuaweiValues({ log, onMarkLogged, onClose }: { log: Loggable } & Pick<H
   };
 
   const copyAndOpen = async () => {
-    await copyValue('texto', buildClipboardText(log));
+    await copyValue('nombre', buildClipboardText(log));
+    // Los números quedan en una notificación, visible desde Huawei Health
+    setNotice(await showHuaweiNotification(log));
     if (isAndroid()) window.location.href = HUAWEI_APP_URL;
   };
 
@@ -118,6 +122,15 @@ function HuaweiValues({ log, onMarkLogged, onClose }: { log: Loggable } & Pick<H
             ? `Copiado: ${copied}`
             : 'Toca un valor para copiarlo'}
       </p>
+      {notice && (
+        <p aria-live="polite" className="text-center text-[13px] text-ink-2">
+          {notice === 'shown'
+            ? 'Los datos quedaron en una notificación: bájala desde arriba en Huawei Health.'
+            : notice === 'denied'
+              ? 'Sin permiso de notificaciones: actívalo en los ajustes del sitio para ver los datos desde Huawei Health.'
+              : 'Este navegador no permite notificaciones; copia los valores desde aquí.'}
+        </p>
+      )}
 
       <Button size="lg" onClick={copyAndOpen}>
         <Copy className="size-[18px]" aria-hidden="true" /> Copiar y abrir Huawei Health <ExternalLink className="size-4" aria-hidden="true" />

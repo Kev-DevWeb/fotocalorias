@@ -30,9 +30,15 @@ export function formatForHuawei(log: HuaweiLoggable) {
   };
 }
 
+/** Lo que se pega en Huawei Health: solo el nombre, que es lo que pide escribir junto con las calorías. */
 export function buildClipboardText(log: HuaweiLoggable): string {
-  const { title, kcal } = formatForHuawei(log);
-  return `${title} - ${kcal} kcal`;
+  return formatForHuawei(log).title;
+}
+
+/** Notificación con todos los datos, para leerlos sin salir de Huawei Health. */
+export function buildNotification(log: HuaweiLoggable): { title: string; body: string } {
+  const { title, kcal, protein, carbs, fat, mealLabel } = formatForHuawei(log);
+  return { title, body: `${kcal} kcal · ${mealLabel} · P ${protein} g · C ${carbs} g · G ${fat} g` };
 }
 
 /**
